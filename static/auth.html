@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login/Register - Ads Simulator</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .container { max-width: 400px; margin: auto; padding: 20px; border: 1px solid #ccc; border-radius: 5px; }
+        label { display: block; margin-bottom: 5px; }
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: calc(100% - 12px); padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 3px;
+        }
+        button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .message { margin-top: 15px; padding: 10px; border-radius: 3px; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        nav { margin-bottom: 20px; }
+        nav a { margin-right: 15px; text-decoration: none; color: #007bff; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/static/dashboard.html">Dashboard</a>
+        <a href="/static/campaigns.html">Campaigns</a>
+        <a href="/static/str.html">Search Term Report</a>
+    </nav>
+    <div class="container">
+        <h2>Register</h2>
+        <form id="registerForm">
+            <label for="regUsername">Username:</label>
+            <input type="text" id="regUsername" required>
+            <label for="regEmail">Email:</label>
+            <input type="email" id="regEmail" required>
+            <label for="regPassword">Password:</label>
+            <input type="password" id="regPassword" required>
+            <button type="submit">Register</button>
+        </form>
+        <div id="registerMessage" class="message" style="display:none;"></div>
+
+        <hr style="margin: 30px 0;">
+
+        <h2>Login</h2>
+        <form id="loginForm">
+            <label for="loginUsername">Username (or Email):</label>
+            <input type="text" id="loginUsername" required> <!-- API uses username for OAuth2PasswordRequestForm -->
+            <label for="loginPassword">Password:</label>
+            <input type="password" id="loginPassword" required>
+            <button type="submit">Login</button>
+        </form>
+        <div id="loginMessage" class="message" style="display:none;"></div>
+        <button id="logoutButton" style="display:none; margin-top: 15px; background-color: #dc3545;">Logout</button>
+    </div>
+
+    <script src="/static/auth.js"></script>
+</body>
+</html>
