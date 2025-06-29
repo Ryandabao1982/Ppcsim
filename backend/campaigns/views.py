@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, generics # Import generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
@@ -205,7 +205,7 @@ class CampaignNegativeProductTargetViewSet(BaseCampaignChildViewSet):
 
 # Generic update/delete for NegativeKeyword and NegativeProductTarget by their own ID
 # These require checking ownership through their parent campaign/adgroup.
-class NegativeKeywordDetailViewSet(viewsets.RetrieveUpdateDestroyAPIView):
+class NegativeKeywordDetailViewSet(generics.RetrieveUpdateDestroyAPIView): # Changed from viewsets
     queryset = NegativeKeyword.objects.all()
     serializer_class = NegativeKeywordSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner] # IsOwner checks parentage
@@ -217,7 +217,7 @@ class NegativeKeywordDetailViewSet(viewsets.RetrieveUpdateDestroyAPIView):
 
     # perform_update and perform_destroy will use IsOwner for permission check.
 
-class NegativeProductTargetDetailViewSet(viewsets.RetrieveUpdateDestroyAPIView):
+class NegativeProductTargetDetailViewSet(generics.RetrieveUpdateDestroyAPIView): # Changed from viewsets
     queryset = NegativeProductTarget.objects.all()
     serializer_class = NegativeProductTargetSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner]

@@ -23,7 +23,8 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("users.urls")),
     path("api/products/", include("products.urls")),
-    path("api/campaign-manager/", include("campaigns.urls")), # Include campaigns app URLs
+    path("api/campaign-manager/", include("campaigns.urls")),
+    path("api/", include("performance.urls")), # Include performance app URLs (e.g. /api/simulate/advance-week/)
 
     # OpenAPI schema and UI paths
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),

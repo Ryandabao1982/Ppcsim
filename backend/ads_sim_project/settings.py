@@ -43,7 +43,8 @@ INSTALLED_APPS = [
     # Local apps
     "users.apps.UsersConfig",
     "products.apps.ProductsConfig",
-    "campaigns.apps.CampaignsConfig", # New campaigns app
+    "campaigns.apps.CampaignsConfig",
+    "performance.apps.PerformanceConfig", # New performance app
 
     # Third-party apps
     "rest_framework",
