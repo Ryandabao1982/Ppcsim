@@ -22,7 +22,8 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/auth/", include("users.urls")),
-    path("api/products/", include("products.urls")), # Include products app URLs
+    path("api/products/", include("products.urls")),
+    path("api/campaign-manager/", include("campaigns.urls")), # Include campaigns app URLs
 
     # OpenAPI schema and UI paths
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
