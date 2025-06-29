@@ -59,9 +59,85 @@ class CampaignViewSet(viewsets.ModelViewSet):
             return CampaignCreateUpdateSerializer
         return CampaignSerializer
 
+from decimal import Decimal # Import Decimal
+from products.models import Product # For fetching product for competitive_intensity
+
+# ... (IsOwner class remains the same) ...
+
+class CampaignViewSet(viewsets.ModelViewSet):
+    # ... (queryset and permission_classes remain the same) ...
+
+    def get_serializer_class(self):
+        if self.action in ['create', 'update', 'partial_update']:
+            return CampaignCreateUpdateSerializer
+        return CampaignSerializer
+
     def perform_create(self, serializer):
-        # Associate the campaign with the current authenticated user
-        serializer.save(user=self.request.user)
+        # Apply default daily budget if not provided
+        daily_budget = serializer.validated_data.get('daily_budget')
+        if daily_budget is None:
+            # serializer.validated_data['daily_budget'] = Decimal("15.00") # Set default
+            # This should be handled by the model default or serializer default if possible,
+            # or set before calling serializer.save() if it's a view-level default.
+            # For now, assume model default or serializer handles it.
+            # If it must be done here, it's:
+            # campaign = serializer.save(user=self.request.user, daily_budget=Decimal("15.00"))
+            # Let's assume the serializer will pass it through or model has default.
+            # The model does not have a default for daily_budget, so we should set it here.
+            pass # Will handle defaults below before save or in serializer.
+
+        # The serializer's create method already handles advertised_product_ids
+        # We need to handle initial_keywords and initial_product_targets
+        initial_keywords_data = serializer.validated_data.pop('initial_keywords', [])
+        initial_product_targets_data = serializer.validated_data.pop('initial_product_targets', [])
+
+        # Ensure default daily_budget
+        if 'daily_budget' not in serializer.validated_data or serializer.validated_data['daily_budget'] is None:
+            validated_data_with_defaults = {**serializer.validated_data, 'daily_budget': Decimal("15.00")}
+        else:
+            validated_data_with_defaults = serializer.validated_data
+
+        campaign = serializer.save(user=self.request.user, **validated_data_with_defaults)
+
+
+        # Determine default bid based on competitive intensity of one advertised product
+        default_bid_for_targets = Decimal("1.00") # Base default
+        if campaign.advertised_products.exists():
+            first_product = campaign.advertised_products.first()
+            if first_product: # Should exist if campaign.advertised_products.exists()
+                if first_product.competitive_intensity == 'high':
+                    default_bid_for_targets = Decimal("1.25")
+                elif first_product.competitive_intensity == 'low':
+                    default_bid_for_targets = Decimal("0.70")
+
+        # Handle creation of default AdGroup and initial targets if applicable
+        targeting_type = campaign.targeting_type # From validated_data or model default
+
+        if targeting_type: # Only create default ad group if targeting type is set (e.g. for SP Manual/Auto)
+            default_ad_group_name = "Default Auto Ad Group" if targeting_type == 'auto' else "Default Manual Ad Group"
+            # Check if an ad group with this name already exists for this campaign to avoid duplicates if re-saving
+            ad_group, created = AdGroup.objects.get_or_create(
+                campaign=campaign,
+                name=default_ad_group_name,
+                defaults={'status': KeywordStatusChoices.ENABLED, 'default_bid': default_bid_for_targets}
+            )
+
+            if targeting_type == 'manual':
+                if initial_keywords_data:
+                    for kw_data in initial_keywords_data:
+                        kw_data.pop('ad_group', None) # Remove if present, will be set
+                        # Apply default bid if not provided in kw_data
+                        if 'bid' not in kw_data or kw_data['bid'] is None:
+                            kw_data['bid'] = default_bid_for_targets
+                        Keyword.objects.create(ad_group=ad_group, **kw_data)
+
+                if initial_product_targets_data:
+                    for pt_data in initial_product_targets_data:
+                        pt_data.pop('ad_group', None)
+                        if 'bid' not in pt_data or pt_data['bid'] is None:
+                            pt_data['bid'] = default_bid_for_targets
+                        ProductTarget.objects.create(ad_group=ad_group, **pt_data)
+        # serializer.save(user=self.request.user) # Original call
 
 # ViewSets for resources nested under Campaign and AdGroup
 # We'll use more specific ListCreateAPIView and RetrieveUpdateDestroyAPIView for nested resources
@@ -216,6 +292,33 @@ class NegativeKeywordDetailViewSet(generics.RetrieveUpdateDestroyAPIView): # Cha
         return NegativeKeywordSerializer
 
     # perform_update and perform_destroy will use IsOwner for permission check.
+
+# Placeholder Views for Suggestions
+class SuggestKeywordsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # product_ids = request.query_params.getlist('product_ids[]') # Or however IDs are passed
+        # For now, return a hardcoded list or empty, awaiting actual logic
+        # In a real implementation, fetch products, analyze names/descriptions/categories
+        # and use the provided product-keyword mapping data.
+        suggestions = [
+            {"text": "suggested keyword 1", "match_type": "broad", "bid": "0.75"},
+            {"text": "related term A", "match_type": "broad", "bid": "0.80"},
+        ]
+        return Response(suggestions)
+
+class SuggestProductTargetsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # product_ids = request.query_params.getlist('product_ids[]')
+        # Suggest related ASINs or categories based on input products
+        suggestions = [
+            {"targeting_type": "asin_same_as", "target_value": "B00EXAMPLE", "bid": "0.60"},
+            {"targeting_type": "category_same_as", "target_value": "Electronics", "bid": "0.50"}, # Or category ID
+        ]
+        return Response(suggestions)
 
 class NegativeProductTargetDetailViewSet(generics.RetrieveUpdateDestroyAPIView): # Changed from viewsets
     queryset = NegativeProductTarget.objects.all()

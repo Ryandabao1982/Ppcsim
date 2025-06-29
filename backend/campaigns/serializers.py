@@ -121,13 +121,18 @@ class CampaignCreateUpdateSerializer(serializers.ModelSerializer):
     # Nested creation of AdGroups or NegativeKeywords could be added here if desired,
     # but often it's cleaner to manage them via their own dedicated endpoints after campaign creation.
     # For now, this serializer focuses on Campaign fields + linking products.
+    # Adding initial keywords and product targets for manual campaigns
+    initial_keywords = KeywordCreateUpdateSerializer(many=True, required=False, write_only=True)
+    initial_product_targets = ProductTargetCreateUpdateSerializer(many=True, required=False, write_only=True)
+    # We could also add initial_negative_keywords etc. if the workflow demands it for campaign creation.
 
     class Meta:
         model = Campaign
         fields = [
             'name', 'ad_type', 'status', 'daily_budget',
             'start_date', 'end_date', 'bidding_strategy', 'targeting_type',
-            'advertised_product_ids' # For creating/updating product links
+            'advertised_product_ids',
+            'initial_keywords', 'initial_product_targets'
         ]
         # user field will be set in the view from request.user
 

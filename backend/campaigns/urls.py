@@ -109,6 +109,10 @@ urlpatterns = [
     # We can add these later if needed for direct access by negative_keyword_id.
     # path('negative-keywords/<int:pk>/', views.NegativeKeywordDetailViewSet.as_view(), name='negativekeyword-detail'),
     # path('negative-product-targets/<int:pk>/', views.NegativeProductTargetDetailViewSet.as_view(), name='negativeproducttarget-detail'),
+
+    # Suggestion endpoints (not part of a router, simple paths)
+    path('suggest-keywords/', views.SuggestKeywordsView.as_view(), name='suggest-keywords'),
+    path('suggest-product-targets/', views.SuggestProductTargetsView.as_view(), name='suggest-product-targets'),
 ]
 
 # The router for top-level campaigns is already included in urlpatterns via path('', include(router.urls))
