@@ -14,7 +14,8 @@ def run_weekly_simulation(db: Session, user: models.User, current_sim_date: date
     # Get all campaigns for the user, eager load necessary data
     user_campaigns = db.query(models.Campaign).options(
         joinedload(models.Campaign.advertised_products),
-        joinedload(models.Campaign.ad_groups).joinedload(models.AdGroup.keywords)
+        joinedload(models.Campaign.ad_groups).joinedload(models.AdGroup.keywords),
+        joinedload(models.Campaign.ad_groups).joinedload(models.AdGroup.product_targets) # Eager load product targets
     ).filter(models.Campaign.user_id == user.id).all()
 
     if not user_campaigns:
@@ -49,96 +50,77 @@ def run_weekly_simulation(db: Session, user: models.User, current_sim_date: date
 
                 # --- Simulate Metrics for the Keyword ---
                 # 1. Impressions: Highly simplified
-                # Base impressions could be higher for broader match types or higher bids
-                base_impressions = random.randint(50, 500)
-                bid_factor = float(keyword.bid) / 1.0  # Simple factor, assuming $1 is a baseline bid
-                impressions = int(base_impressions * bid_factor * (random.uniform(0.8, 1.2)))
-                if impressions < 0: impressions = 0
+                base_impressions_kw = random.randint(50, 500)
+                bid_factor_kw = float(keyword.bid) / 1.0  # Simple factor, assuming $1 is a baseline bid
+                impressions_kw = int(base_impressions_kw * bid_factor_kw * (random.uniform(0.8, 1.2)))
+                if impressions_kw < 0: impressions_kw = 0
 
                 # 2. Clicks: Based on a simulated CTR
-                # For MVP, let's use a somewhat realistic CTR range (e.g. 0.1% to 3%)
-                sim_ctr_percentage = random.uniform(0.1, 3.0)
-                clicks = int(impressions * (sim_ctr_percentage / 100.0))
-                if clicks < 0: clicks = 0
+                sim_ctr_percentage_kw = random.uniform(0.1, 3.0)
+                clicks_kw = int(impressions_kw * (sim_ctr_percentage_kw / 100.0))
+                if clicks_kw < 0: clicks_kw = 0
 
                 # 3. Spend: Clicks * Bid
-                spend = Decimal(clicks) * keyword.bid
+                spend_kw = Decimal(clicks_kw) * keyword.bid
 
                 # 4. Orders (Conversions): Based on product's CVR
-                # Ensure CVR is treated as a probability (e.g., 0.1 for 10%)
-                orders = 0
-                if clicks > 0 and product_to_advertise.initial_cvr_baseline > 0:
-                    for _ in range(clicks): # Binomial distribution basically
+                orders_kw = 0
+                if clicks_kw > 0 and product_to_advertise.initial_cvr_baseline > 0:
+                    for _ in range(clicks_kw):
                         if random.random() < product_to_advertise.initial_cvr_baseline:
-                            orders += 1
+                            orders_kw += 1
 
                 # 5. Sales: Orders * Product Price
-                sales = Decimal(orders) * product_to_advertise.avg_selling_price
+                sales_kw = Decimal(orders_kw) * product_to_advertise.avg_selling_price
 
-                # --- Calculate Derived Metrics ---
-                cpc = spend / Decimal(clicks) if clicks > 0 else Decimal(0)
-                ctr_calc = (Decimal(clicks) / Decimal(impressions) * 100) if impressions > 0 else Decimal(0)
-                cvr_calc = (Decimal(orders) / Decimal(clicks) * 100) if clicks > 0 else Decimal(0)
-                acos_calc = (spend / sales * 100) if sales > 0 else Decimal(0)
-                roas_calc = sales / spend if spend > 0 else Decimal(0)
+                # --- Calculate Derived Metrics for Keyword ---
+                cpc_kw = spend_kw / Decimal(clicks_kw) if clicks_kw > 0 else Decimal(0)
+                ctr_calc_kw = (Decimal(clicks_kw) / Decimal(impressions_kw) * 100) if impressions_kw > 0 else Decimal(0)
+                cvr_calc_kw = (Decimal(orders_kw) / Decimal(clicks_kw) * 100) if clicks_kw > 0 else Decimal(0)
+                acos_calc_kw = (spend_kw / sales_kw * 100) if sales_kw > 0 else Decimal(0)
+                roas_calc_kw = sales_kw / spend_kw if spend_kw > 0 else Decimal(0)
 
-                # --- Create AdPerformanceMetric record ---
-                # For MVP, we'll create one metric record per keyword per day for 7 days.
-                # A real system might aggregate differently or have more granular "placement" data.
+                # --- Create AdPerformanceMetric record for Keyword ---
                 for i in range(7): # Simulate 7 days in the week
                     day_date = current_sim_date + datetime.timedelta(days=i)
-                    daily_impressions = impressions // 7
-                    daily_clicks = clicks // 7
-                    daily_spend = spend / 7
-                    daily_orders = orders // 7
-                    daily_sales = sales / 7
-
-                    # Ensure last day gets remainder for integer division
-                    if i == 6:
-                        daily_impressions += impressions % 7
-                        daily_clicks += clicks % 7
-                        # Spend, orders, sales are decimal, so division is fine, but sum might be slightly off due to rounding.
-                        # For simplicity, we'll assume this small diff is okay for MVP.
+                    daily_impressions = impressions_kw // 7
+                    daily_clicks = clicks_kw // 7
+                    daily_spend = spend_kw / 7
+                    daily_orders = orders_kw // 7
+                    daily_sales = sales_kw / 7
+                    if i == 6: # Ensure last day gets remainder
+                        daily_impressions += impressions_kw % 7
+                        daily_clicks += clicks_kw % 7
 
                     metric = models.AdPerformanceMetric(
-                        metric_date=day_date,
-                        user_id=user.id,
-                        campaign_id=campaign.id,
-                        ad_group_id=ad_group.id,
-                        keyword_id=keyword.id,
-                        placement=random.choice(list(models.PlacementEnum)), # Random placement for MVP
-                        impressions=daily_impressions,
-                        clicks=daily_clicks,
-                        spend=daily_spend.quantize(Decimal("0.01")),
-                        orders=daily_orders,
-                        sales=daily_sales.quantize(Decimal("0.01")),
-                        acos=float(acos_calc),
-                        roas=float(roas_calc),
-                        cpc=float(cpc),
-                        ctr=float(ctr_calc),
-                        cvr=float(cvr_calc)
+                        metric_date=day_date, user_id=user.id, campaign_id=campaign.id,
+                        ad_group_id=ad_group.id, keyword_id=keyword.id, product_target_id=None, # Explicitly None
+                        placement=random.choice(list(models.PlacementEnum)),
+                        impressions=daily_impressions, clicks=daily_clicks,
+                        spend=daily_spend.quantize(Decimal("0.01")), orders=daily_orders,
+                        sales=daily_sales.quantize(Decimal("0.01")), acos=float(acos_calc_kw),
+                        roas=float(roas_calc_kw), cpc=float(cpc_kw), ctr=float(ctr_calc_kw), cvr=float(cvr_calc_kw)
                     )
                     db.add(metric)
 
-                # --- Generate Dummy SearchTermPerformance records ---
-                # Create 1-2 dummy search terms for this keyword this week
+                # --- Generate Dummy SearchTermPerformance records for Keyword ---
                 num_search_terms_to_gen = random.randint(1,2)
                 for _ in range(num_search_terms_to_gen):
                     variation = random.choice([" shoes", " online", " cheap", " review", " for sale", ""])
                     search_term_text = f"{keyword.keyword_text}{variation}".strip()
 
                     # Distribute some of the keyword's weekly performance to this search term
-                    st_impressions = impressions // (num_search_terms_to_gen * 2) # Example distribution
-                    st_clicks = clicks // (num_search_terms_to_gen * 2)
-                    st_spend = spend / Decimal(num_search_terms_to_gen * 2)
-                    st_orders = orders // (num_search_terms_to_gen * 2)
-                    st_sales = sales / Decimal(num_search_terms_to_gen * 2)
+                    st_impressions = impressions_kw // (num_search_terms_to_gen * 2) # Example distribution
+                    st_clicks = clicks_kw // (num_search_terms_to_gen * 2)
+                    st_spend_val = spend_kw / Decimal(num_search_terms_to_gen * 2) # Renamed to avoid conflict with 'spend' parameter
+                    st_orders = orders_kw // (num_search_terms_to_gen * 2)
+                    st_sales_val = sales_kw / Decimal(num_search_terms_to_gen * 2) # Renamed
 
-                    st_cpc = st_spend / Decimal(st_clicks) if st_clicks > 0 else Decimal(0)
+                    st_cpc = st_spend_val / Decimal(st_clicks) if st_clicks > 0 else Decimal(0)
                     st_ctr_calc = (Decimal(st_clicks) / Decimal(st_impressions) * 100) if st_impressions > 0 else Decimal(0)
                     st_cvr_calc = (Decimal(st_orders) / Decimal(st_clicks) * 100) if st_clicks > 0 else Decimal(0)
-                    st_acos_calc = (st_spend / st_sales * 100) if st_sales > 0 else Decimal(0)
-                    st_roas_calc = st_sales / st_spend if st_spend > 0 else Decimal(0)
+                    st_acos_calc = (st_spend_val / st_sales_val * 100) if st_sales_val > 0 else Decimal(0)
+                    st_roas_calc = st_sales_val / st_spend_val if st_spend_val > 0 else Decimal(0)
 
                     search_term_metric = models.SearchTermPerformance(
                         report_date=current_sim_date, # Weekly report for search terms for MVP
@@ -149,9 +131,9 @@ def run_weekly_simulation(db: Session, user: models.User, current_sim_date: date
                         matched_keyword_id=keyword.id,
                         impressions=st_impressions,
                         clicks=st_clicks,
-                        spend=st_spend.quantize(Decimal("0.01")),
+                        spend=st_spend_val.quantize(Decimal("0.01")),
                         orders=st_orders,
-                        sales=st_sales.quantize(Decimal("0.01")),
+                        sales=st_sales_val.quantize(Decimal("0.01")),
                         acos=float(st_acos_calc),
                         roas=float(st_roas_calc),
                         cpc=float(st_cpc),
@@ -159,6 +141,77 @@ def run_weekly_simulation(db: Session, user: models.User, current_sim_date: date
                         cvr=float(st_cvr_calc)
                     )
                     db.add(search_term_metric)
+
+            # Now, simulate for Product Targets in the same Ad Group
+            for pt in ad_group.product_targets:
+                if pt.status != models.ProductTargetStatusEnum.ENABLED:
+                    print(f"Product Target '{pt.target_value}' ({pt.targeting_type.value}) is not enabled. Skipping.")
+                    continue
+
+                if not advertised_products_in_campaign: continue
+                product_to_advertise = random.choice(advertised_products_in_campaign)
+
+                # --- Simulate Metrics for the Product Target ---
+                # Bid for product target: use its own bid if set, else ad group default, else a fallback (e.g., $0.50)
+                actual_bid_pt = pt.bid if pt.bid is not None else (ad_group.default_bid if ad_group.default_bid is not None else Decimal("0.50"))
+
+                # 1. Impressions (very simplified for PT)
+                # Assume category targets get more impressions than ASIN targets for now
+                base_impressions_pt = random.randint(100, 800) if pt.targeting_type == models.ProductTargetingTypeEnum.CATEGORY_SAME_AS else random.randint(20, 200)
+                bid_factor_pt = float(actual_bid_pt) / 1.0
+                impressions_pt = int(base_impressions_pt * bid_factor_pt * random.uniform(0.7, 1.3))
+                if impressions_pt < 0: impressions_pt = 0
+
+                # 2. Clicks (simulated CTR, generally lower for PT than specific keywords initially)
+                sim_ctr_percentage_pt = random.uniform(0.05, 1.5)
+                clicks_pt = int(impressions_pt * (sim_ctr_percentage_pt / 100.0))
+                if clicks_pt < 0: clicks_pt = 0
+
+                # 3. Spend
+                spend_pt = Decimal(clicks_pt) * actual_bid_pt
+
+                # 4. Orders
+                orders_pt = 0
+                if clicks_pt > 0 and product_to_advertise.initial_cvr_baseline > 0:
+                    for _ in range(clicks_pt):
+                        if random.random() < product_to_advertise.initial_cvr_baseline: # Simplified CVR
+                            orders_pt +=1
+
+                # 5. Sales
+                sales_pt = Decimal(orders_pt) * product_to_advertise.avg_selling_price
+
+                # --- Calculate Derived Metrics for Product Target ---
+                cpc_pt = spend_pt / Decimal(clicks_pt) if clicks_pt > 0 else Decimal(0)
+                ctr_calc_pt = (Decimal(clicks_pt) / Decimal(impressions_pt) * 100) if impressions_pt > 0 else Decimal(0)
+                cvr_calc_pt = (Decimal(orders_pt) / Decimal(clicks_pt) * 100) if clicks_pt > 0 else Decimal(0)
+                acos_calc_pt = (spend_pt / sales_pt * 100) if sales_pt > 0 else Decimal(0)
+                roas_calc_pt = sales_pt / spend_pt if spend_pt > 0 else Decimal(0)
+
+                # --- Create AdPerformanceMetric record for Product Target ---
+                for i in range(7): # Simulate 7 days
+                    day_date = current_sim_date + datetime.timedelta(days=i)
+                    daily_impressions = impressions_pt // 7
+                    daily_clicks = clicks_pt // 7
+                    daily_spend = spend_pt / 7
+                    daily_orders = orders_pt // 7
+                    daily_sales = sales_pt / 7
+                    if i == 6: # Remainder assignment
+                        daily_impressions += impressions_pt % 7
+                        daily_clicks += clicks_pt % 7
+
+                    metric = models.AdPerformanceMetric(
+                        metric_date=day_date, user_id=user.id, campaign_id=campaign.id,
+                        ad_group_id=ad_group.id, keyword_id=None, product_target_id=pt.id, # Link to product_target
+                        placement=random.choice(list(models.PlacementEnum)),
+                        impressions=daily_impressions, clicks=daily_clicks,
+                        spend=daily_spend.quantize(Decimal("0.01")), orders=daily_orders,
+                        sales=daily_sales.quantize(Decimal("0.01")), acos=float(acos_calc_pt),
+                        roas=float(roas_calc_pt), cpc=float(cpc_pt), ctr=float(ctr_calc_pt), cvr=float(cvr_calc_pt)
+                    )
+                    db.add(metric)
+
+                # Note: SearchTermPerformance records are not generated for product targets in this MVP version.
+                # This could be an enhancement (e.g. if a category target matches a search term).
 
     try:
         db.commit()

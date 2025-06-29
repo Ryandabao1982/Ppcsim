@@ -64,13 +64,13 @@ from app.routers import campaigns as campaigns_router
 from app.routers import simulation as simulation_router
 from app.routers import dashboard as dashboard_router
 from app.routers import reports as reports_router
-# from app.routers import products as products_router # Example
+from app.routers import products as products_router
 
 app.include_router(campaigns_router.router)
 app.include_router(simulation_router.router)
 app.include_router(dashboard_router.router)
 app.include_router(reports_router.router)
-# app.include_router(products_router.router)
+app.include_router(products_router.router)
 
 # Mount static files directory (CSS, JS, images for frontend)
 # Ensure the 'static' directory exists at the root of your project (same level as 'app' directory)

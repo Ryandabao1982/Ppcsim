@@ -4,7 +4,12 @@ from decimal import Decimal
 import datetime
 
 # Import enums from models to use in schemas
-from app.models import AdTypeEnum, CampaignTargetingTypeEnum, BiddingStrategyEnum, MatchTypeEnum, KeywordStatusEnum
+from app.models import (
+    AdTypeEnum, CampaignTargetingTypeEnum, BiddingStrategyEnum,
+    MatchTypeEnum, KeywordStatusEnum,
+    ProductTargetingTypeEnum, ProductTargetStatusEnum,
+    NegativeMatchTypeEnum, NegativeProductTargetStatusEnum # Added Enums for Negative Product Targets
+)
 
 # Token Schemas
 class Token(BaseModel):
@@ -27,6 +32,10 @@ class User(UserBase):
     class Config:
         from_attributes = True
 
+# Generic Message Schema
+class Message(BaseModel):
+    detail: str
+
 # Product Schemas
 class ProductBase(BaseModel):
     asin: str
@@ -43,6 +52,14 @@ class Product(ProductBase):
     id: int
     class Config:
         from_attributes = True
+
+class ProductUpdate(BaseModel): # All fields optional for PATCH-like behavior
+    asin: Optional[str] = None
+    product_name: Optional[str] = None
+    category: Optional[str] = None
+    avg_selling_price: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+    cost_of_goods_sold: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+    initial_cvr_baseline: Optional[float] = None
 
 # Keyword Schemas
 class KeywordBase(BaseModel):
@@ -67,15 +84,158 @@ class AdGroupBase(BaseModel):
 
 class AdGroupCreate(AdGroupBase):
     keywords: Optional[List[KeywordCreate]] = [] # Allow creating keywords when creating adgroup
+    product_targets: Optional[List['ProductTargetCreate']] = [] # Added for product targets
 
 class AdGroup(AdGroupBase):
     id: int
     campaign_id: int
     keywords: List[Keyword] = []
+    product_targets: List['ProductTarget'] = [] # Added for product targets
+    class Config:
+        from_attributes = True
+
+# ProductTarget Schemas
+class ProductTargetBase(BaseModel):
+    targeting_type: ProductTargetingTypeEnum
+    target_value: str # ASIN or Category ID/Name
+    bid: Optional[Decimal] = Field(None, max_digits=10, decimal_places=2)
+    status: Optional[ProductTargetStatusEnum] = ProductTargetStatusEnum.ENABLED
+
+class ProductTargetCreate(ProductTargetBase):
+    pass
+
+class ProductTarget(ProductTargetBase):
+    id: int
+    ad_group_id: int
+    class Config:
+        from_attributes = True
+
+# Forward references update for AdGroupCreate and AdGroup
+# AdGroupCreate.model_rebuild()
+# AdGroup.model_rebuild()
+
+# NegativeKeyword Schemas
+class NegativeKeywordBase(BaseModel):
+    keyword_text: str
+    match_type: NegativeMatchTypeEnum
+    status: Optional[KeywordStatusEnum] = KeywordStatusEnum.ENABLED # Reusing KeywordStatusEnum
+
+class NegativeKeywordCreate(NegativeKeywordBase):
+    # Must be linked to EITHER a campaign OR an ad group, handled by API logic/validation
+    campaign_id: Optional[int] = None
+    ad_group_id: Optional[int] = None
+
+    # Pydantic validator to ensure one of campaign_id or ad_group_id is provided
+    # This can also be handled at the API endpoint level more explicitly.
+    # from pydantic import root_validator
+    # @root_validator(pre=False, skip_on_failure=True) # Using pre=False to work on validated fields
+    # def check_scope_present(cls, values):
+    #     if values.get('campaign_id') is None and values.get('ad_group_id') is None:
+    #         raise ValueError('Either campaign_id or ad_group_id must be provided for NegativeKeyword')
+    #     if values.get('campaign_id') is not None and values.get('ad_group_id') is not None:
+    #         raise ValueError('NegativeKeyword cannot be linked to both campaign_id and ad_group_id')
+    #     return values
+
+
+class NegativeKeyword(NegativeKeywordBase):
+    id: int
+    campaign_id: Optional[int] = None # Reflects DB model
+    ad_group_id: Optional[int] = None # Reflects DB model
+    class Config:
+        from_attributes = True
+
+
+# Update Campaign and AdGroup schemas to include negative keywords
+class CampaignCreate(CampaignBase):
+    ad_groups: Optional[List[AdGroupCreate]] = []
+    advertised_product_ids: Optional[List[int]] = []
+    negative_keywords: Optional[List[NegativeKeywordCreate]] = [] # Campaign-level negatives
+
+class Campaign(CampaignBase):
+    id: int
+    user_id: int
+    ad_groups: List[AdGroup] = []
+    advertised_products: List[Product] = []
+    negative_keywords: List[NegativeKeyword] = [] # Campaign-level negatives
+    class Config:
+        from_attributes = True
+
+class AdGroupCreate(AdGroupBase):
+    keywords: Optional[List[KeywordCreate]] = []
+    product_targets: Optional[List[ProductTargetCreate]] = []
+    negative_keywords: Optional[List[NegativeKeywordCreate]] = [] # AdGroup-level negatives
+
+class AdGroup(AdGroupBase):
+    id: int
+    campaign_id: int
+    keywords: List[Keyword] = []
+    product_targets: List[ProductTarget] = []
+    negative_keywords: List[NegativeKeyword] = [] # AdGroup-level negatives
     class Config:
         from_attributes = True
 
 # Campaign Schemas
+# Forward references might need to be resolved for Pydantic v1 or complex v2 cases
+# AdGroupCreate.model_rebuild() # If AdGroupCreate refers to something defined later (it does: NegativeKeywordCreate)
+# AdGroup.model_rebuild()       # If AdGroup refers to something defined later (it does: NegativeKeyword)
+# CampaignCreate.model_rebuild()# If CampaignCreate refers to something defined later (it does: NegativeKeywordCreate)
+# Campaign.model_rebuild()      # If Campaign refers to something defined later (it does: NegativeKeyword)
+# This is usually more critical if types are imported across modules with circular deps.
+# For a single file, Pydantic often resolves it, but explicit calls don't hurt if issues arise.
+# Pydantic V2 generally handles forward references more robustly.
+# For now, I'll rely on Pydantic's default behavior. If parsing fails, these can be added.
+
+# NegativeProductTarget Schemas
+class NegativeProductTargetBase(BaseModel):
+    target_asin: str
+    status: Optional[NegativeProductTargetStatusEnum] = NegativeProductTargetStatusEnum.ENABLED # Reusing for consistency
+
+class NegativeProductTargetCreate(NegativeProductTargetBase):
+    campaign_id: Optional[int] = None
+    ad_group_id: Optional[int] = None
+    # Similar to NegativeKeywordCreate, validation for one scope ID needed at API/CRUD level
+
+class NegativeProductTarget(NegativeProductTargetBase):
+    id: int
+    campaign_id: Optional[int] = None
+    ad_group_id: Optional[int] = None
+    class Config:
+        from_attributes = True
+
+# Update Campaign and AdGroup schemas for Negative Product Targets
+class CampaignCreate(CampaignBase):
+    ad_groups: Optional[List[AdGroupCreate]] = []
+    advertised_product_ids: Optional[List[int]] = []
+    negative_keywords: Optional[List[NegativeKeywordCreate]] = []
+    negative_product_targets: Optional[List[NegativeProductTargetCreate]] = [] # Campaign-level
+
+class Campaign(CampaignBase):
+    id: int
+    user_id: int
+    ad_groups: List[AdGroup] = []
+    advertised_products: List[Product] = []
+    negative_keywords: List[NegativeKeyword] = []
+    negative_product_targets: List[NegativeProductTarget] = [] # Campaign-level
+    class Config:
+        from_attributes = True
+
+class AdGroupCreate(AdGroupBase):
+    keywords: Optional[List[KeywordCreate]] = []
+    product_targets: Optional[List[ProductTargetCreate]] = []
+    negative_keywords: Optional[List[NegativeKeywordCreate]] = []
+    negative_product_targets: Optional[List[NegativeProductTargetCreate]] = [] # AdGroup-level
+
+class AdGroup(AdGroupBase):
+    id: int
+    campaign_id: int
+    keywords: List[Keyword] = []
+    product_targets: List[ProductTarget] = []
+    negative_keywords: List[NegativeKeyword] = []
+    negative_product_targets: List[NegativeProductTarget] = [] # AdGroup-level
+    class Config:
+        from_attributes = True
+
+
 class CampaignBase(BaseModel):
     campaign_name: str
     ad_type: Optional[AdTypeEnum] = AdTypeEnum.SPONSORED_PRODUCTS

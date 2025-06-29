@@ -23,7 +23,11 @@ sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..'
 # for 'autogenerate' support
 from app.database import Base  # Import Base from your app's database configuration
 # Import all your models here so Alembic can detect changes
-from app.models import User, Product, Campaign, AdGroup, Keyword, AdPerformanceMetric, SearchTermPerformance
+from app.models import (
+    User, Product, Campaign, AdGroup, Keyword,
+    AdPerformanceMetric, SearchTermPerformance, ProductTarget,
+    NegativeKeyword, NegativeProductTarget # Added NegativeProductTarget
+)
 # Add other models here as they are created, e.g.:
 # from app.models import ...
 

@@ -141,6 +141,73 @@
                 <input type="number" id="keywordBid" step="0.01" required>
                 <button type="submit">Add Keyword</button>
             </form>
+            <hr>
+            <h3>Product Targets for Selected Ad Group (<span id="selectedAdGroupNameForPT"></span>)</h3>
+            <div id="productTargetsContainer"></div>
+            <form id="addProductTargetForm" class="hidden">
+                <h4>Add New Product Target</h4>
+                <input type="hidden" id="modalAdGroupIdForPT">
+                <label for="targetingTypePT">Targeting Type:</label>
+                <select id="targetingTypePT">
+                    <option value="asin_same_as">ASIN</option>
+                    <option value="category_same_as">Category</option>
+                </select>
+                <label for="targetValuePT">Target Value (ASIN or Category Name/ID):</label>
+                <input type="text" id="targetValuePT" required>
+                <label for="productTargetBid">Bid (Optional):</label>
+                <input type="number" id="productTargetBid" step="0.01">
+                <button type="submit">Add Product Target</button>
+            </form>
+            <hr>
+            <h3>Campaign-Level Negative Keywords</h3>
+            <div id="campaignNegativeKeywordsContainer"></div>
+            <form id="addCampaignNegativeKeywordForm" class="hidden">
+                <h4>Add Campaign Negative Keyword</h4>
+                <input type="hidden" id="modalCampaignIdForNegKW">
+                <label for="campaignNegKeywordText">Negative Keyword Text:</label>
+                <input type="text" id="campaignNegKeywordText" required>
+                <label for="campaignNegMatchType">Match Type:</label>
+                <select id="campaignNegMatchType">
+                    <option value="negative_exact">Negative Exact</option>
+                    <option value="negative_phrase">Negative Phrase</option>
+                </select>
+                <button type="submit">Add Campaign Negative</button>
+            </form>
+            <hr>
+            <h3>Ad Group-Level Negative Keywords (<span id="selectedAdGroupNameForNegKW"></span>)</h3>
+            <div id="adGroupNegativeKeywordsContainer"></div>
+            <form id="addAdGroupNegativeKeywordForm" class="hidden">
+                <h4>Add Ad Group Negative Keyword</h4>
+                <input type="hidden" id="modalAdGroupIdForNegKW">
+                <label for="adGroupNegKeywordText">Negative Keyword Text:</label>
+                <input type="text" id="adGroupNegKeywordText" required>
+                <label for="adGroupNegMatchType">Match Type:</label>
+                <select id="adGroupNegMatchType">
+                    <option value="negative_exact">Negative Exact</option>
+                    <option value="negative_phrase">Negative Phrase</option>
+                </select>
+                <button type="submit">Add Ad Group Negative</button>
+            </form>
+            <hr>
+            <h3>Campaign-Level Negative Product Targets</h3>
+            <div id="campaignNegativeProductTargetsContainer"></div>
+            <form id="addCampaignNegativeProductTargetForm" class="hidden">
+                <h4>Add Campaign Negative Product Target</h4>
+                <input type="hidden" id="modalCampaignIdForNegPT">
+                <label for="campaignNegTargetAsin">Target ASIN:</label>
+                <input type="text" id="campaignNegTargetAsin" required placeholder="e.g., B00EXAMPLE">
+                <button type="submit">Add Campaign Negative Product</button>
+            </form>
+            <hr>
+            <h3>Ad Group-Level Negative Product Targets (<span id="selectedAdGroupNameForNegPT"></span>)</h3>
+            <div id="adGroupNegativeProductTargetsContainer"></div>
+            <form id="addAdGroupNegativeProductTargetForm" class="hidden">
+                <h4>Add Ad Group Negative Product Target</h4>
+                <input type="hidden" id="modalAdGroupIdForNegPT">
+                <label for="adGroupNegTargetAsin">Target ASIN:</label>
+                <input type="text" id="adGroupNegTargetAsin" required placeholder="e.g., B00EXAMPLE">
+                <button type="submit">Add Ad Group Negative Product</button>
+            </form>
         </div>
     </div>
 
