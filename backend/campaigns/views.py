@@ -293,30 +293,59 @@ class NegativeKeywordDetailViewSet(generics.RetrieveUpdateDestroyAPIView): # Cha
 
     # perform_update and perform_destroy will use IsOwner for permission check.
 
+from products.keyword_data import get_keyword_suggestions_for_asins, PRODUCT_KEYWORD_MAPPINGS
+from products.models import Product as ProductModel # Alias to avoid conflict if any
+
 # Placeholder Views for Suggestions
 class SuggestKeywordsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        # product_ids = request.query_params.getlist('product_ids[]') # Or however IDs are passed
-        # For now, return a hardcoded list or empty, awaiting actual logic
-        # In a real implementation, fetch products, analyze names/descriptions/categories
-        # and use the provided product-keyword mapping data.
-        suggestions = [
-            {"text": "suggested keyword 1", "match_type": "broad", "bid": "0.75"},
-            {"text": "related term A", "match_type": "broad", "bid": "0.80"},
-        ]
-        return Response(suggestions)
+        product_asins_str = request.query_params.get('asins', '') # Expects comma-separated ASINs
+        if not product_asins_str:
+            return Response({"error": "Please provide ASINs to get suggestions."}, status=status.HTTP_400_BAD_REQUEST)
 
-class SuggestProductTargetsView(APIView):
+        product_asins = [asin.strip() for asin in product_asins_str.split(',')]
+
+        # Validate ASINs against existing products (optional, but good practice)
+        # existing_db_products = ProductModel.objects.filter(asin__in=product_asins).values_list('asin', flat=True)
+        # valid_asins_for_suggestions = [asin for asin in product_asins if asin in existing_db_products and asin in PRODUCT_KEYWORD_MAPPINGS]
+
+        # For now, directly use ASINs that are in our mapping
+        valid_asins_for_suggestions = [asin for asin in product_asins if asin in PRODUCT_KEYWORD_MAPPINGS]
+
+        if not valid_asins_for_suggestions:
+            return Response({"suggestions": {"primary_keywords": [], "general_search_terms": []}, "message": "No valid ASINs found or no suggestions for provided ASINs."}, status=status.HTTP_200_OK)
+
+        suggestions_data = get_keyword_suggestions_for_asins(valid_asins_for_suggestions)
+
+        # Format for frontend (example: list of strings or list of dicts with more info)
+        # The current get_keyword_suggestions_for_asins returns lists of strings.
+        # The frontend might expect something like: [{"text": "kw", "match_type": "broad", "suggested_bid": "0.75"}]
+        # For now, returning the raw structure from keyword_data.
+        # TODO: Enhance with suggested bids and match types for general terms.
+
+        formatted_suggestions = []
+        for kw_text in suggestions_data.get("primary_keywords", []):
+             # Primary keywords are often exact, but here we list them as text
+            formatted_suggestions.append({"text": kw_text.strip("[]"), "match_type": "exact", "type": "primary"})
+        for kw_text in suggestions_data.get("general_search_terms", []):
+            formatted_suggestions.append({"text": kw_text, "match_type": "broad", "type": "general"}) # Defaulting general to broad
+
+        return Response(formatted_suggestions)
+
+
+class SuggestProductTargetsView(APIView): # Placeholder, not fully implemented with data
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        # product_ids = request.query_params.getlist('product_ids[]')
-        # Suggest related ASINs or categories based on input products
+        # product_asins_str = request.query_params.get('asins', '')
+        # TODO: Implement logic to suggest product targets (e.g., related categories, competitor ASINs)
+        # This would likely involve analyzing the input products' categories, brands etc.
+        # For now, returning hardcoded example.
         suggestions = [
-            {"targeting_type": "asin_same_as", "target_value": "B00EXAMPLE", "bid": "0.60"},
-            {"targeting_type": "category_same_as", "target_value": "Electronics", "bid": "0.50"}, # Or category ID
+            {"targeting_type": "asin_same_as", "target_value": "B0COMPETITOR1", "suggested_bid": "0.65"},
+            {"targeting_type": "category_same_as", "target_value": "Related Category ID or Name", "suggested_bid": "0.55"},
         ]
         return Response(suggestions)
 

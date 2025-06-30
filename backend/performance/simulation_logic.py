@@ -10,6 +10,7 @@ from django.db.models import Q # For complex lookups if needed, not used in this
 from campaigns.models import Campaign, Keyword, ProductTarget, KeywordStatusChoices, ProductTargetStatusChoices, PlacementChoices
 # Assuming Product model is in 'products.models'
 from products.models import Product
+from products.keyword_data import get_all_product_keyword_data_for_asin # Import new helper
 from .models import AdPerformanceMetric, SearchTermPerformance
 # User model from settings
 from django.conf import settings
@@ -104,25 +105,63 @@ def run_weekly_simulation(user_id: int, current_sim_date: datetime.date):
                         orders=daily_ord, sales=daily_sls
                     ))
 
-                # Generate dummy search terms for this keyword (weekly summary)
-                if impressions > 0 : # Only generate search terms if there were impressions
-                    num_search_terms = random.randint(1, min(3, clicks + 1)) # At most 3, or related to clicks
-                    for _ in range(num_search_terms):
-                        variation = random.choice([" extra", " online", " cheap", " review", " for sale", ""])
-                        st_text = f"{keyword.text}{variation}".strip()
-                        if not st_text: st_text = keyword.text # Ensure not empty
+                # Generate more realistic search terms for this keyword (weekly summary)
+                if impressions_kw > 0:
+                    product_keyword_data = get_all_product_keyword_data_for_asin(product_to_advertise.asin)
 
-                        st_imp = impressions // num_search_terms
-                        st_clk = clicks // num_search_terms
-                        st_sp = spend / num_search_terms
-                        st_ord = orders // num_search_terms
-                        st_sls = sales / num_search_terms
+                    possible_search_terms = []
+                    if product_keyword_data:
+                        # Use primary keywords as exact search terms
+                        possible_search_terms.extend([kw.strip("[]") for kw in product_keyword_data.get("primary_keywords", [])])
+                        # Use general search terms
+                        possible_search_terms.extend(product_keyword_data.get("general_search_terms", []))
+                        # Simulate some negative keyword searches too (these should ideally get low/no conversions)
+                        # For simplicity, we'll just pick from the list, actual negative matching is complex.
+                        possible_search_terms.extend([kw.strip("[]\"") for kw in product_keyword_data.get("negative_keywords", [])])
+
+                    if not possible_search_terms: # Fallback if no suggestions found for product
+                        possible_search_terms.append(keyword.text)
+                        possible_search_terms.append(f"{keyword.text} extra word")
+
+                    num_search_terms_to_generate = random.randint(1, min(3, clicks_kw + 1, len(possible_search_terms)))
+
+                    # Ensure we don't try to sample more than available if list is small
+                    if num_search_terms_to_generate > len(possible_search_terms):
+                        selected_st_texts = possible_search_terms # use all if not enough
+                    else:
+                        selected_st_texts = random.sample(possible_search_terms, num_search_terms_to_generate)
+
+                    for st_text in selected_st_texts:
+                        if not st_text: continue
+
+                        # Distribute keyword's performance among these search terms
+                        # This is a simplification; in reality, each search term has its own raw performance.
+                        st_imp = impressions_kw // num_search_terms_to_generate
+                        st_clk = clicks_kw // num_search_terms_to_generate
+                        st_sp_val = spend_kw / Decimal(num_search_terms_to_generate)
+
+                        # Simulate orders for this specific search term - could be different from overall keyword CVR
+                        # For terms matching "negative_keywords", simulate much lower or zero CVR.
+                        is_negative_example = any(neg_kw.strip("[]\"") in st_text for neg_kw in product_keyword_data.get("negative_keywords", []))
+
+                        st_orders = 0
+                        if st_clk > 0 and product_to_advertise.initial_cvr_baseline > 0:
+                            effective_cvr = product_to_advertise.initial_cvr_baseline * random.uniform(0.7, 1.3) # Slight variance
+                            if is_negative_example:
+                                effective_cvr *= 0.1 # Drastically reduce CVR for terms that look like negatives
+
+                            for _ in range(st_clk):
+                                if random.random() < effective_cvr:
+                                    st_orders += 1
+
+                        st_sales_val = Decimal(st_orders) * product_to_advertise.avg_selling_price
 
                         search_terms_to_create.append(SearchTermPerformance(
                             report_date=current_sim_date, # Weekly for now
                             user_id=user_id, campaign_id=campaign.id, ad_group_id=ad_group.id,
                             search_term_text=st_text, matched_keyword_id=keyword.id,
-                            impressions=st_imp, clicks=st_clk, spend=st_sp, orders=st_ord, sales=st_sls
+                            impressions=st_imp, clicks=st_clk, spend=st_sp_val,
+                            orders=st_orders, sales=st_sales_val
                         ))
 
             # --- Simulate for Product Targets ---
