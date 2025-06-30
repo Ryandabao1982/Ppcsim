@@ -1,220 +1,295 @@
 import random
 import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
+import math
+from typing import Optional # Ensure Optional is imported
 
 from django.db import transaction
-from django.db.models import Q # For complex lookups if needed, not used in this version yet
-
-# Import models using full path to avoid circular dependency issues if this module
-# were to be imported by campaigns.models (though it's not currently)
-from campaigns.models import Campaign, Keyword, ProductTarget, KeywordStatusChoices, ProductTargetStatusChoices, PlacementChoices
-# Assuming Product model is in 'products.models'
-from products.models import Product
-from products.keyword_data import get_all_product_keyword_data_for_asin # Import new helper
-from .models import AdPerformanceMetric, SearchTermPerformance
-# User model from settings
 from django.conf import settings
-User = settings.AUTH_USER_MODEL # This will get users.CustomUser
+
+from campaigns.models import (
+    Campaign, Keyword, ProductTarget, CampaignStatusChoices,
+    KeywordStatusChoices, ProductTargetStatusChoices, PlacementChoices,
+    MatchTypeChoices, ProductTargetingTypeChoices
+)
+from products.models import Product
+from products.keyword_data import get_all_product_keyword_data_for_asin
+from .models import AdPerformanceMetric, SearchTermPerformance
+
+User = settings.AUTH_USER_MODEL
+
+# --- Helper Functions for Simulation ---
+
+def get_category_avg_bid(competitive_intensity: Optional[str]) -> Decimal:
+    if competitive_intensity == 'high': return Decimal("1.50")
+    if competitive_intensity == 'low': return Decimal("0.50")
+    return Decimal("1.00")
+
+def calculate_bid_impact_multiplier(bid: Decimal, category_avg_bid: Decimal) -> float:
+    if category_avg_bid == Decimal('0'): return 0.05 if bid <= Decimal('0') else 1.0
+    bid_ratio = float(bid / category_avg_bid)
+    if bid_ratio <= 0: return 0.05
+    return bid_ratio ** 0.7
+
+def get_product_relevance_multiplier(product: Product) -> float: # Used for Impressions & CTR
+    multiplier = 1.0
+    # Use current_* fields if available, else initial. (These fields will be added to Product model later)
+    avg_star_rating = getattr(product, 'current_avg_star_rating', product.avg_star_rating)
+    review_count = getattr(product, 'current_review_count', product.review_count)
+
+    if avg_star_rating is not None:
+        if avg_star_rating >= 4.5: multiplier += 0.15
+        elif avg_star_rating >= 4.0: multiplier += 0.05
+        elif avg_star_rating < 3.5: multiplier -= 0.1
+    if review_count is not None:
+        if review_count > 1000: multiplier += 0.15
+        elif review_count > 100: multiplier += 0.05
+        elif review_count < 20: multiplier -= 0.1
+    if product.initial_cvr_baseline > 0.05: multiplier += 0.1
+    elif product.initial_cvr_baseline < 0.01: multiplier -= 0.05
+    return max(0.5, min(1.5, multiplier))
+
+def get_match_type_efficiency(match_type: str) -> float: # For Impressions & CTR
+    if match_type == MatchTypeChoices.EXACT: return 1.0
+    if match_type == MatchTypeChoices.PHRASE: return 0.85
+    if match_type == MatchTypeChoices.BROAD: return 0.65
+    return 0.7
+
+def get_keyword_relevance_for_ctr(keyword_text: str, product: Product) -> float: # For CTR
+    product_data = get_all_product_keyword_data_for_asin(product.asin)
+    if not product_data: return 0.8
+    primary_keywords = [pk.strip("[]") for pk in product_data.get("primary_keywords", [])]
+    if keyword_text in primary_keywords: return 1.2
+    if keyword_text in product_data.get("general_search_terms", []): return 1.0
+    if keyword_text.lower() in product.product_name.lower(): return 0.9
+    return 0.7
+
+def calculate_dynamic_ctr(base_ctr: float, product_relevance: float, target_specificity: float, ad_rank_factor: float) -> float:
+    dynamic_ctr = base_ctr * product_relevance * target_specificity * ad_rank_factor
+    return max(0.0001, min(dynamic_ctr, 0.15)) # Clamp CTR 0.01% to 15%
+
+def calculate_simulated_cpc(student_bid: Decimal, category_avg_bid: Decimal, competitive_intensity: Optional[str]) -> Decimal:
+    comp_factor = Decimal('1.0')
+    if competitive_intensity == 'high': comp_factor = Decimal('1.1')
+    elif competitive_intensity == 'low': comp_factor = Decimal('0.8')
+    sim_competitor_bid_proxy = category_avg_bid * comp_factor * Decimal(random.uniform(0.7, 1.1))
+    cpc = min(student_bid, sim_competitor_bid_proxy + Decimal(random.uniform(0.01, 0.05)))
+    return max(Decimal("0.02"), cpc.quantize(Decimal("0.01")))
+
+# --- New CVR Helper Functions ---
+def get_product_quality_cvr_multiplier(product: Product) -> float:
+    multiplier = 1.0
+    avg_star_rating = getattr(product, 'current_avg_star_rating', product.avg_star_rating)
+    review_count = getattr(product, 'current_review_count', product.review_count)
+
+    if avg_star_rating is not None: # More sensitive impact for CVR
+        if avg_star_rating >= 4.7: multiplier += 0.25
+        elif avg_star_rating >= 4.2: multiplier += 0.12
+        elif avg_star_rating < 3.8: multiplier -= 0.20
+        elif avg_star_rating < 3.0: multiplier -= 0.40
+    if review_count is not None:
+        if review_count > 1500: multiplier += 0.25
+        elif review_count > 200: multiplier += 0.12
+        elif review_count < 50: multiplier -= 0.15
+        elif review_count < 10: multiplier -= 0.30
+    return max(0.2, min(1.8, multiplier)) # Clamp CVR quality multiplier
+
+def get_search_term_relevance_cvr_multiplier(keyword_text_proxy: str, product: Product) -> float:
+    # This function now uses keyword_text as a proxy for the actual search term.
+    # The Search Term Report generation will use actual search terms later.
+    product_data = get_all_product_keyword_data_for_asin(product.asin)
+    if not product_data: return 0.9 # Default if no specific mapping
+
+    primary_keywords = [pk.strip("[]") for pk in product_data.get("primary_keywords", [])]
+    negative_examples = [nk.strip("[]\"") for nk in product_data.get("negative_keywords", [])]
+
+    if keyword_text_proxy in primary_keywords: return 1.25 # Boost for highly relevant (primary keyword match)
+    if any(neg_example in keyword_text_proxy for neg_example in negative_examples): return 0.1 # Penalize if it resembles a negative
+    if keyword_text_proxy in product_data.get("general_search_terms", []): return 1.0
+    if keyword_text_proxy.lower() in product.product_name.lower(): return 0.95
+    return 0.8 # General fallback
+
+def calculate_dynamic_cvr(base_cvr: float, quality_mult: float, search_term_rel_mult: float, seasonality_mult: float = 1.0) -> float:
+    dynamic_cvr = base_cvr * quality_mult * search_term_rel_mult * seasonality_mult
+    return max(0.00001, min(dynamic_cvr, 0.60)) # Clamp CVR (e.g., 0.001% to 60%)
 
 
 def run_weekly_simulation(user_id: int, current_sim_date: datetime.date):
-    """
-    Runs the simulation logic for one week for a given user.
-    Generates performance metrics for active campaigns, keywords, and product targets.
-    """
-    # In Django, views usually pass the request.user object directly.
-    # If only user_id is available, fetch the user object first.
-    # For this standalone logic, user_id is fine.
-
     print(f"Running weekly simulation for user_id {user_id} for week starting {current_sim_date}...")
-
-    # Get all campaigns for the user, prefetch related data for efficiency
     user_campaigns = Campaign.objects.filter(user_id=user_id).prefetch_related(
-        'advertised_products',
-        'ad_groups__keywords',
-        'ad_groups__product_targets'
+        'advertised_products', 'ad_groups__keywords', 'ad_groups__product_targets'
     ).all()
 
-    if not user_campaigns:
-        print(f"No campaigns found for user_id {user_id}. Skipping simulation.")
-        return
-
-    metrics_to_create = []
-    search_terms_to_create = []
+    if not user_campaigns: print(f"No campaigns for user_id {user_id}."); return
+    all_metrics_to_create = []
 
     for campaign in user_campaigns:
-        # Basic check for active campaign
-        if campaign.start_date > current_sim_date or \
-           (campaign.end_date and campaign.end_date < current_sim_date) or \
-           campaign.status != CampaignStatusChoices.ENABLED:
-            print(f"Campaign '{campaign.name}' (ID: {campaign.id}) is not active/enabled. Skipping.")
-            continue
-
-        if not campaign.advertised_products.exists():
-            print(f"Campaign '{campaign.name}' (ID: {campaign.id}) has no advertised products. Skipping.")
-            continue
-
+        if not campaign.advertised_products.exists(): continue
         advertised_products_in_campaign = list(campaign.advertised_products.all())
 
-        for ad_group in campaign.ad_groups.all():
-            if ad_group.status != KeywordStatusChoices.ENABLED: # Assuming AdGroup reuses KeywordStatusChoices
-                print(f"Ad Group '{ad_group.name}' (ID: {ad_group.id}) is not enabled. Skipping targets within.")
+        for i in range(7): # Daily loop
+            simulated_day_date = current_sim_date + datetime.timedelta(days=i)
+            campaign_daily_spent_so_far = Decimal('0.00')
+
+            if not (campaign.start_date <= simulated_day_date and \
+                    (not campaign.end_date or campaign.end_date >= simulated_day_date) and \
+                    campaign.status == CampaignStatusChoices.ENABLED):
                 continue
 
-            # --- Simulate for Keywords ---
-            for keyword in ad_group.keywords.all():
-                if keyword.status != KeywordStatusChoices.ENABLED:
-                    continue
+            for ad_group in campaign.ad_groups.all():
+                if ad_group.status != KeywordStatusChoices.ENABLED: continue
 
-                product_to_advertise = random.choice(advertised_products_in_campaign)
+                # --- Keywords ---
+                for keyword in ad_group.keywords.all():
+                    if keyword.status != KeywordStatusChoices.ENABLED: continue
+                    if campaign_daily_spent_so_far >= campaign.daily_budget: continue
 
-                base_impressions = random.randint(50, 500)
-                bid_factor = float(keyword.bid) / 1.0
-                impressions = int(base_impressions * bid_factor * (random.uniform(0.8, 1.2)))
-                if impressions < 0: impressions = 0
+                    product_adv = random.choice(advertised_products_in_campaign)
+                    cat_avg_bid = get_category_avg_bid(product_adv.competitive_intensity)
+                    bid_mult = calculate_bid_impact_multiplier(keyword.bid, cat_avg_bid)
+                    prod_rel_mult_imp_ctr = get_product_relevance_multiplier(product_adv) # For impressions & CTR
+                    match_eff = get_match_type_efficiency(keyword.match_type)
 
-                sim_ctr_percentage = random.uniform(0.1, 3.0)
-                clicks = int(impressions * (sim_ctr_percentage / 100.0))
-                if clicks < 0: clicks = 0
+                    kw_base_imp_week = 700
+                    potential_imp = (kw_base_imp_week / 7.0) * bid_mult * prod_rel_mult_imp_ctr * match_eff * random.uniform(0.8, 1.2)
+                    daily_impressions = max(0, int(potential_imp))
 
-                spend = Decimal(clicks) * keyword.bid
+                    kw_rel_to_prod_ctr = get_keyword_relevance_for_ctr(keyword.text, product_adv) # Corrected: pass product object
+                    ad_rank_mult = max(0.5, min(1.5, 1.0 + (bid_mult - 1.0) * 0.2))
+                    dyn_ctr = calculate_dynamic_ctr(0.006, prod_rel_mult_imp_ctr, kw_rel_to_prod_ctr * match_eff, ad_rank_mult)
+                    potential_clicks = max(0, int(daily_impressions * dyn_ctr))
 
-                orders = 0
-                if clicks > 0 and product_to_advertise.initial_cvr_baseline > 0:
-                    for _ in range(clicks):
-                        if random.random() < product_to_advertise.initial_cvr_baseline:
-                            orders += 1
+                    daily_clicks = 0; daily_spend = Decimal('0.00')
+                    if potential_clicks > 0:
+                        cpc = calculate_simulated_cpc(keyword.bid, cat_avg_bid, product_adv.competitive_intensity)
+                        potential_spend = Decimal(potential_clicks) * cpc
+                        remaining_budget = campaign.daily_budget - campaign_daily_spent_so_far
+                        if remaining_budget <= Decimal('0.01'): daily_clicks = 0; daily_spend = Decimal('0.00'); daily_impressions = 0
+                        elif potential_spend > remaining_budget:
+                            if cpc > 0: daily_clicks = math.floor(remaining_budget / cpc)
+                            else: daily_clicks = potential_clicks
+                            daily_spend = Decimal(daily_clicks) * cpc
+                            if potential_clicks > 0: daily_impressions = int(daily_impressions * (Decimal(daily_clicks)/Decimal(potential_clicks)))
+                        else:
+                            daily_clicks = potential_clicks; daily_spend = potential_spend
+                        campaign_daily_spent_so_far += daily_spend
+                    if campaign_daily_spent_so_far >= campaign.daily_budget and daily_spend == Decimal('0.00') and daily_clicks == 0 and daily_impressions > 0 :
+                         daily_impressions = 0
 
-                sales = Decimal(orders) * product_to_advertise.avg_selling_price
+                    # --- CVR & Sales/Orders Logic for Keywords ---
+                    daily_orders = 0; daily_sales = Decimal('0.00')
+                    if daily_clicks > 0:
+                        prod_quality_cvr_mult = get_product_quality_cvr_multiplier(product_adv)
+                        # Using keyword.text as proxy for search term relevance for now
+                        # A "negative match example" here means the keyword itself resembles a negative term for the product
+                        product_keyword_data = get_all_product_keyword_data_for_asin(product_adv.asin)
+                        is_neg_example = any(neg_kw.strip("[]\"") in keyword.text for neg_kw in product_keyword_data.get("negative_keywords", []))
 
-                for i in range(7): # Create daily metrics for the week
-                    day_date = current_sim_date + datetime.timedelta(days=i)
-                    daily_imp = impressions // 7 + (impressions % 7 if i == 0 else 0)
-                    daily_clk = clicks // 7 + (clicks % 7 if i == 0 else 0)
-                    # For spend, orders, sales, it's better to divide at the end or store weekly and aggregate daily later.
-                    # For now, simple division.
-                    daily_sp = spend / 7
-                    daily_ord = orders // 7 + (orders % 7 if i == 0 else 0)
-                    daily_sls = sales / 7
+                        search_term_rel_cvr_mult = get_search_term_relevance_cvr_multiplier(keyword.text, product_adv, is_neg_example)
+                        # TODO: Add seasonality_cvr_mult later
+                        dynamic_cvr = calculate_dynamic_cvr(product_adv.initial_cvr_baseline, prod_quality_cvr_mult, search_term_rel_cvr_mult)
 
-                    metrics_to_create.append(AdPerformanceMetric(
-                        metric_date=day_date, user_id=user_id, campaign_id=campaign.id,
-                        ad_group_id=ad_group.id, keyword_id=keyword.id, product_target_id=None,
-                        placement=random.choice(PlacementChoices.choices)[0],
-                        impressions=daily_imp, clicks=daily_clk, spend=daily_sp,
-                        orders=daily_ord, sales=daily_sls
+                        for _ in range(daily_clicks):
+                            if random.random() < dynamic_cvr:
+                                daily_orders += 1
+                        daily_sales = Decimal(daily_orders) * product_adv.avg_selling_price
+
+                    # --- CVR & Sales/Orders Logic for Keywords ---
+                    daily_orders = 0; daily_sales = Decimal('0.00')
+                    if daily_clicks > 0:
+                        prod_quality_cvr_mult = get_product_quality_cvr_multiplier(product_adv)
+                        product_keyword_data = get_all_product_keyword_data_for_asin(product_adv.asin)
+                        is_neg_example = any(neg_kw.strip("[]\"") in keyword.text for neg_kw in product_keyword_data.get("negative_keywords", []))
+                        search_term_rel_cvr_mult = get_search_term_relevance_cvr_multiplier(keyword.text, product_adv, is_neg_example)
+                        dynamic_cvr = calculate_dynamic_cvr(product_adv.initial_cvr_baseline, prod_quality_cvr_mult, search_term_rel_cvr_mult)
+                        for _ in range(daily_clicks):
+                            if random.random() < dynamic_cvr: daily_orders += 1
+                        daily_sales = Decimal(daily_orders) * product_adv.avg_selling_price
+
+                    # Pre-calculate derived metrics for AdPerformanceMetric
+                    metric_data_dict = {
+                        'impressions': daily_impressions, 'clicks': daily_clicks, 'spend': daily_spend,
+                        'orders': daily_orders, 'sales': daily_sales
+                    }
+                    derived_metrics = _calculate_derived_metrics(metric_data_dict) # Use a helper similar to model's _calculate_metrics
+
+                    all_metrics_to_create.append(AdPerformanceMetric(
+                        metric_date=simulated_day_date, user_id=user_id, campaign_id=campaign.id,
+                        ad_group_id=ad_group.id, keyword_id=keyword.id,
+                        impressions=daily_impressions, clicks=daily_clicks, spend=daily_spend,
+                        orders=daily_orders, sales=daily_sales, placement=random.choice(PlacementChoices.choices)[0],
+                        acos=derived_metrics['acos'], roas=derived_metrics['roas'],
+                        cpc=derived_metrics['cpc'], ctr=derived_metrics['ctr'], cvr=derived_metrics['cvr']
                     ))
 
-                # Generate more realistic search terms for this keyword (weekly summary)
-                if impressions_kw > 0:
-                    product_keyword_data = get_all_product_keyword_data_for_asin(product_to_advertise.asin)
+                # --- Product Targets ---
+                for pt in ad_group.product_targets.all():
+                    if pt.status != ProductTargetStatusChoices.ENABLED: continue
+                    if campaign_daily_spent_so_far >= campaign.daily_budget: continue
 
-                    possible_search_terms = []
-                    if product_keyword_data:
-                        # Use primary keywords as exact search terms
-                        possible_search_terms.extend([kw.strip("[]") for kw in product_keyword_data.get("primary_keywords", [])])
-                        # Use general search terms
-                        possible_search_terms.extend(product_keyword_data.get("general_search_terms", []))
-                        # Simulate some negative keyword searches too (these should ideally get low/no conversions)
-                        # For simplicity, we'll just pick from the list, actual negative matching is complex.
-                        possible_search_terms.extend([kw.strip("[]\"") for kw in product_keyword_data.get("negative_keywords", [])])
+                    product_adv = random.choice(advertised_products_in_campaign)
+                    actual_bid = pt.bid or ad_group.default_bid or Decimal("0.50")
+                    cat_avg_bid = get_category_avg_bid(product_adv.competitive_intensity)
+                    bid_mult = calculate_bid_impact_multiplier(actual_bid, cat_avg_bid)
+                    prod_rel_mult_imp_ctr = get_product_relevance_multiplier(product_adv)
 
-                    if not possible_search_terms: # Fallback if no suggestions found for product
-                        possible_search_terms.append(keyword.text)
-                        possible_search_terms.append(f"{keyword.text} extra word")
+                    base_imp_pt_week = 400 if pt.targeting_type == ProductTargetingTypeChoices.ASIN_SAME_AS else 1200
+                    target_eff = 0.9 if pt.targeting_type == ProductTargetingTypeChoices.ASIN_SAME_AS else 0.7
+                    potential_imp_pt = (base_imp_pt_week / 7.0) * bid_mult * prod_rel_mult_imp_ctr * target_eff * random.uniform(0.7, 1.3)
+                    daily_pt_impressions = max(0, int(potential_imp_pt))
 
-                    num_search_terms_to_generate = random.randint(1, min(3, clicks_kw + 1, len(possible_search_terms)))
+                    ad_rank_mult_pt = max(0.6, min(1.4, 1.0 + (bid_mult - 1.0) * 0.15))
+                    dyn_ctr_pt = calculate_dynamic_ctr(0.004, prod_rel_mult_imp_ctr, target_eff, ad_rank_mult_pt)
+                    potential_pt_clicks = max(0, int(daily_pt_impressions * dyn_ctr_pt))
 
-                    # Ensure we don't try to sample more than available if list is small
-                    if num_search_terms_to_generate > len(possible_search_terms):
-                        selected_st_texts = possible_search_terms # use all if not enough
-                    else:
-                        selected_st_texts = random.sample(possible_search_terms, num_search_terms_to_generate)
+                    daily_pt_clicks = 0; daily_pt_spend = Decimal('0.00')
+                    if potential_pt_clicks > 0:
+                        cpc_pt = calculate_simulated_cpc(actual_bid, cat_avg_bid, product_adv.competitive_intensity)
+                        potential_pt_spend = Decimal(potential_pt_clicks) * cpc_pt
+                        remaining_budget = campaign.daily_budget - campaign_daily_spent_so_far
+                        if remaining_budget <= Decimal('0.01'): daily_pt_clicks = 0; daily_pt_spend = Decimal('0.00'); daily_pt_impressions = 0
+                        elif potential_pt_spend > remaining_budget:
+                            if cpc_pt > 0: daily_pt_clicks = math.floor(remaining_budget / cpc_pt)
+                            else: daily_pt_clicks = potential_pt_clicks
+                            daily_pt_spend = Decimal(daily_pt_clicks) * cpc_pt
+                            if potential_pt_clicks > 0: daily_pt_impressions = int(daily_pt_impressions * (Decimal(daily_pt_clicks)/Decimal(potential_pt_clicks))) # Should be daily_pt_impressions
+                        else:
+                            daily_pt_clicks = potential_pt_clicks; daily_pt_spend = potential_pt_spend
+                        campaign_daily_spent_so_far += daily_pt_spend
+                    if campaign_daily_spent_so_far >= campaign.daily_budget and daily_pt_spend == Decimal('0.00') and daily_pt_clicks == 0 and daily_pt_impressions > 0 :
+                        daily_pt_impressions = 0
 
-                    for st_text in selected_st_texts:
-                        if not st_text: continue
+                    daily_pt_orders = 0; daily_pt_sales = Decimal('0.00')
+                    if daily_pt_clicks > 0:
+                        prod_quality_cvr_mult = get_product_quality_cvr_multiplier(product_adv)
+                        pt_relevance_cvr_mult = 1.1 if pt.targeting_type == ProductTargetingTypeChoices.ASIN_SAME_AS else 0.9
+                        dynamic_pt_cvr = calculate_dynamic_cvr(product_adv.initial_cvr_baseline, prod_quality_cvr_mult, pt_relevance_cvr_mult)
+                        for _ in range(daily_pt_clicks):
+                            if random.random() < dynamic_pt_cvr: daily_pt_orders += 1
+                        daily_pt_sales = Decimal(daily_pt_orders) * product_adv.avg_selling_price
 
-                        # Distribute keyword's performance among these search terms
-                        # This is a simplification; in reality, each search term has its own raw performance.
-                        st_imp = impressions_kw // num_search_terms_to_generate
-                        st_clk = clicks_kw // num_search_terms_to_generate
-                        st_sp_val = spend_kw / Decimal(num_search_terms_to_generate)
+                    metric_data_dict_pt = {
+                        'impressions': daily_pt_impressions, 'clicks': daily_pt_clicks, 'spend': daily_pt_spend,
+                        'orders': daily_pt_orders, 'sales': daily_pt_sales
+                    }
+                    derived_metrics_pt = _calculate_derived_metrics(metric_data_dict_pt)
 
-                        # Simulate orders for this specific search term - could be different from overall keyword CVR
-                        # For terms matching "negative_keywords", simulate much lower or zero CVR.
-                        is_negative_example = any(neg_kw.strip("[]\"") in st_text for neg_kw in product_keyword_data.get("negative_keywords", []))
-
-                        st_orders = 0
-                        if st_clk > 0 and product_to_advertise.initial_cvr_baseline > 0:
-                            effective_cvr = product_to_advertise.initial_cvr_baseline * random.uniform(0.7, 1.3) # Slight variance
-                            if is_negative_example:
-                                effective_cvr *= 0.1 # Drastically reduce CVR for terms that look like negatives
-
-                            for _ in range(st_clk):
-                                if random.random() < effective_cvr:
-                                    st_orders += 1
-
-                        st_sales_val = Decimal(st_orders) * product_to_advertise.avg_selling_price
-
-                        search_terms_to_create.append(SearchTermPerformance(
-                            report_date=current_sim_date, # Weekly for now
-                            user_id=user_id, campaign_id=campaign.id, ad_group_id=ad_group.id,
-                            search_term_text=st_text, matched_keyword_id=keyword.id,
-                            impressions=st_imp, clicks=st_clk, spend=st_sp_val,
-                            orders=st_orders, sales=st_sales_val
-                        ))
-
-            # --- Simulate for Product Targets ---
-            for pt in ad_group.product_targets.all():
-                if pt.status != ProductTargetStatusChoices.ENABLED: # Assuming ProductTarget uses ProductTargetStatusChoices
-                    continue
-
-                product_to_advertise = random.choice(advertised_products_in_campaign)
-                actual_bid_pt = pt.bid if pt.bid is not None else (ad_group.default_bid if ad_group.default_bid is not None else Decimal("0.50"))
-
-                base_imp_pt = random.randint(30, 300) if pt.targeting_type == ProductTargetingTypeChoices.ASIN_SAME_AS else random.randint(100, 1000)
-                bid_factor_pt = float(actual_bid_pt) / 1.0
-                impressions = int(base_imp_pt * bid_factor_pt * random.uniform(0.7, 1.3))
-                if impressions < 0: impressions = 0
-
-                sim_ctr_pt = random.uniform(0.05, 1.5)
-                clicks = int(impressions * (sim_ctr_pt / 100.0))
-                if clicks < 0: clicks = 0
-
-                spend = Decimal(clicks) * actual_bid_pt
-                orders = 0
-                if clicks > 0 and product_to_advertise.initial_cvr_baseline > 0:
-                    for _ in range(clicks):
-                        if random.random() < product_to_advertise.initial_cvr_baseline:
-                            orders +=1
-                sales = Decimal(orders) * product_to_advertise.avg_selling_price
-
-                for i in range(7): # Daily metrics
-                    day_date = current_sim_date + datetime.timedelta(days=i)
-                    daily_imp = impressions // 7 + (impressions % 7 if i == 0 else 0)
-                    daily_clk = clicks // 7 + (clicks % 7 if i == 0 else 0)
-                    daily_sp = spend / 7
-                    daily_ord = orders // 7 + (orders % 7 if i == 0 else 0)
-                    daily_sls = sales / 7
-
-                    metrics_to_create.append(AdPerformanceMetric(
-                        metric_date=day_date, user_id=user_id, campaign_id=campaign.id,
-                        ad_group_id=ad_group.id, keyword_id=None, product_target_id=pt.id,
-                        placement=random.choice(PlacementChoices.choices)[0],
-                        impressions=daily_imp, clicks=daily_clk, spend=daily_sp,
-                        orders=daily_ord, sales=daily_sls
+                    all_metrics_to_create.append(AdPerformanceMetric(
+                        metric_date=simulated_day_date, user_id=user_id, campaign_id=campaign.id,
+                        ad_group_id=ad_group.id, product_target_id=pt.id,
+                        impressions=daily_pt_impressions, clicks=daily_pt_clicks, spend=daily_pt_spend,
+                        orders=daily_pt_orders, sales=daily_pt_sales, placement=random.choice(PlacementChoices.choices)[0],
+                        acos=derived_metrics_pt['acos'], roas=derived_metrics_pt['roas'],
+                        cpc=derived_metrics_pt['cpc'], ctr=derived_metrics_pt['ctr'], cvr=derived_metrics_pt['cvr']
                     ))
-                # Not generating SearchTermPerformance for product targets in this MVP pass
 
-    if metrics_to_create or search_terms_to_create:
+    if all_metrics_to_create:
         try:
-            with transaction.atomic(): # Ensure all or none are created
-                AdPerformanceMetric.objects.bulk_create(metrics_to_create)
-                SearchTermPerformance.objects.bulk_create(search_terms_to_create)
-            print(f"Simulation for user_id {user_id} completed. {len(metrics_to_create)} AdPerformanceMetric records and {len(search_terms_to_create)} SearchTermPerformance records created.")
+            with transaction.atomic():
+                AdPerformanceMetric.objects.bulk_create(all_metrics_to_create)
+            print(f"Sim for user {user_id}: {len(all_metrics_to_create)} AdPerformanceMetric records created.")
         except Exception as e:
-            print(f"Error during bulk creation for simulation user_id {user_id}: {e}")
-            # No rollback needed due to transaction.atomic()
-            raise # Re-raise to be handled by the calling view if necessary
+            print(f"Error bulk creating metrics for user {user_id}: {e}")
+            raise
     else:
-        print(f"No metrics generated for user_id {user_id} for week of {current_sim_date}.")
+        print(f"No metrics generated for user {user_id} for week of {current_sim_date}.")
