@@ -9,12 +9,13 @@ from django.conf import settings
 
 from campaigns.models import (
     Campaign, Keyword, ProductTarget, CampaignStatusChoices,
-    KeywordStatusChoices, ProductTargetStatusChoices, PlacementChoices,
+    KeywordStatusChoices, ProductTargetStatusEnum,
     MatchTypeChoices, ProductTargetingTypeChoices
+    # PlacementChoices removed from here
 )
 from products.models import Product
 from products.keyword_data import get_all_product_keyword_data_for_asin
-from .models import AdPerformanceMetric, SearchTermPerformance
+from .models import AdPerformanceMetric, SearchTermPerformance, PlacementChoices # PlacementChoices imported from local models
 
 User = settings.AUTH_USER_MODEL
 

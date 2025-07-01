@@ -26,6 +26,10 @@ from django.shortcuts import get_object_or_404
 from django.conf import settings
 User = settings.AUTH_USER_MODEL
 
+# Import from insights_challenges app
+from insights_challenges.rules import generate_insights_for_user
+from insights_challenges.services import check_all_active_challenge_progress_for_user
+
 
 class AdvanceWeekSimulationView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -34,15 +38,24 @@ class AdvanceWeekSimulationView(views.APIView):
         user = request.user
         current_server_date = timezone.now().date()
         try:
+            # Run core simulation
             run_weekly_simulation(user_id=user.id, current_sim_date=current_server_date)
+
+            # After simulation, generate insights for this user for the week that just completed
+            # The 'current_sim_week_start_date' for insights should be the same one used for simulation.
+            generate_insights_for_user(user_id=user.id, current_sim_week_start_date=current_server_date)
+
+            # After simulation, check challenge progress
+            check_all_active_challenge_progress_for_user(user_id=user.id, current_sim_week_start_date=current_server_date)
+
             return Response(
-                {"message": f"Simulation successfully advanced for one week starting {current_server_date} for user {user.email}."},
+                {"message": f"Simulation, insight generation, and challenge progress checks completed for week starting {current_server_date} for user {user.email}."},
                 status=status.HTTP_200_OK
             )
         except Exception as e:
-            print(f"Error during simulation advancement for user {user.email}: {str(e)}")
+            print(f"Error during weekly process for user {user.email}: {str(e)}") # Log error
             return Response(
-                {"error": "An error occurred during simulation.", "detail": str(e)},
+                {"error": "An error occurred during the weekly simulation process.", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

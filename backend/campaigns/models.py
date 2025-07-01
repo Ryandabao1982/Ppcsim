@@ -38,6 +38,11 @@ class ProductTargetingTypeChoices(models.TextChoices): # For Product Targets
     ASIN_SAME_AS = 'asin_same_as', _('ASIN')
     CATEGORY_SAME_AS = 'category_same_as', _('Category')
 
+class ProductTargetStatusEnum(models.TextChoices): # Definition was missing or misplaced
+    ENABLED = 'enabled', _('Enabled')
+    PAUSED = 'paused', _('Paused')
+    ARCHIVED = 'archived', _('Archived')
+
 class NegativeMatchTypeChoices(models.TextChoices): # For Negative Keywords
     NEGATIVE_EXACT = 'negative_exact', _('Negative Exact')
     NEGATIVE_PHRASE = 'negative_phrase', _('Negative Phrase')
@@ -186,8 +191,8 @@ class ProductTarget(models.Model):
     status = models.CharField(
         _("Status"),
         max_length=20,
-        choices=KeywordStatusChoices.choices, # Reusing status enum
-        default=KeywordStatusChoices.ENABLED
+        choices=ProductTargetStatusEnum.choices, # Use its own enum
+        default=ProductTargetStatusEnum.ENABLED
     )
     bid = models.DecimalField(
         _("Bid"),

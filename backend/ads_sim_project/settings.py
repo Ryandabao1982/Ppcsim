@@ -44,7 +44,8 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "products.apps.ProductsConfig",
     "campaigns.apps.CampaignsConfig",
-    "performance.apps.PerformanceConfig", # New performance app
+    "performance.apps.PerformanceConfig",
+    "insights_challenges.apps.InsightsChallengesConfig", # New insights_challenges app
 
     # Third-party apps
     "rest_framework",

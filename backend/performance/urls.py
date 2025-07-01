@@ -6,7 +6,7 @@ app_name = 'performance'
 from .views import (
     AdvanceWeekSimulationView, DashboardMetricsView,
     CampaignPerformanceListView, AdGroupPerformanceListView,
-    KeywordPerformanceListView
+    KeywordPerformanceListView, SearchTermReportView # Added SearchTermReportView
     # ProductTargetPerformanceListView
 )
 
@@ -42,5 +42,5 @@ urlpatterns = [
     # path('metrics/adgroups/<int:ad_group_pk>/product-targets/', ProductTargetPerformanceListView.as_view(), name='metrics-producttargets-list-for-adgroup'),
 
     # Search Term Report API
-    path('reports/search-terms/', views.SearchTermReportView.as_view(), name='report-search-terms'),
+    path('reports/search-terms/', SearchTermReportView.as_view(), name='report-search-terms'), # Corrected: removed views. prefix
 ]

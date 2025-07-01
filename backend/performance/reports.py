@@ -223,3 +223,74 @@ def get_overall_dashboard_metrics(
         'sales': aggregation['total_sales'],
     }
     return _calculate_derived_metrics(data)
+
+def get_search_term_report_data(
+    user_id: int,
+    start_date: Optional[datetime.date] = None,
+    end_date: Optional[datetime.date] = None,
+    campaign_id: Optional[int] = None,
+    ad_group_id: Optional[int] = None, # Optional filter
+    skip: int = 0,
+    limit: int = 1000
+) -> List[Dict]:
+
+    queryset = SearchTermPerformance.objects.filter(user_id=user_id).select_related(
+        'campaign', 'ad_group', 'matched_keyword'
+    )
+
+    if start_date:
+        queryset = queryset.filter(report_date__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(report_date__lte=end_date)
+    if campaign_id:
+        queryset = queryset.filter(campaign_id=campaign_id)
+    if ad_group_id:
+        queryset = queryset.filter(ad_group_id=ad_group_id)
+
+    # Unlike other reports, SearchTermPerformance already stores calculated metrics.
+    # So we directly fetch and format.
+    # For STR, it's often useful to aggregate by search_term_text over the period.
+    # Let's aggregate by search_term_text, campaign, ad_group, matched_keyword for the period.
+
+    aggregated_terms = queryset.values(
+        'search_term_text',
+        'campaign_id', 'campaign__name',
+        'ad_group_id', 'ad_group__name',
+        'matched_keyword_id', 'matched_keyword__text', 'matched_keyword__match_type'
+    ).annotate(
+        impressions=Coalesce(Sum('impressions'), 0),
+        clicks=Coalesce(Sum('clicks'), 0),
+        spend=Coalesce(Sum('spend'), Decimal('0.00')),
+        orders=Coalesce(Sum('orders'), 0),
+        sales=Coalesce(Sum('sales'), Decimal('0.00')),
+        # We can recalculate derived metrics based on these sums or trust the row-level ones if not aggregating sums
+    ).order_by('-clicks', '-impressions', 'search_term_text') # Order by clicks then impressions
+
+    # Apply pagination after aggregation
+    paginated_terms = aggregated_terms[skip : skip + limit]
+
+    results = []
+    for item in paginated_terms:
+        data = {
+            'report_date': None, # This is aggregated, so report_date is tricky. Maybe use period start/end? For now, None.
+                                 # Or, if the query was not aggregating by search_term_text but fetching raw rows, then report_date would be item.report_date
+            'search_term_text': item['search_term_text'],
+            'campaign_id': item['campaign_id'],
+            'campaign_name': item['campaign__name'],
+            'ad_group_id': item['ad_group_id'],
+            'ad_group_name': item['ad_group__name'],
+            'matched_keyword_id': item['matched_keyword_id'],
+            'matched_keyword_text': item['matched_keyword__text'],
+            'match_type': item['matched_keyword__match_type'], # Match type of the keyword that was matched
+            'impressions': item['impressions'],
+            'clicks': item['clicks'],
+            'spend': item['spend'],
+            'orders': item['orders'],
+            'sales': item['sales'],
+        }
+        # If SearchTermPerformance model's save method calculates ACOS,ROAS etc on each row,
+        # then summing these pre-calculated values is usually incorrect.
+        # It's better to calculate them based on the *aggregated* sums.
+        results.append(_calculate_derived_metrics(data)) # Calculate derived metrics on the aggregated data
+
+    return results

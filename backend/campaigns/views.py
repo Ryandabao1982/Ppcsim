@@ -1,4 +1,5 @@
-from rest_framework import viewsets, permissions, status, generics # Import generics
+from rest_framework import viewsets, permissions, status, generics
+from rest_framework.views import APIView # Import APIView
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
