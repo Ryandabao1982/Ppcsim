@@ -10,30 +10,35 @@ from django.db import transaction # For atomic operations if creating nested obj
 # --- Leaf Node Serializers ---
 
 class KeywordSerializer(serializers.ModelSerializer):
+    """Serializer for reading Keyword data."""
     class Meta:
         model = Keyword
         fields = ['id', 'ad_group', 'text', 'match_type', 'status', 'bid', 'created_at', 'updated_at']
         read_only_fields = ['id', 'ad_group', 'created_at', 'updated_at'] # ad_group set by parent
 
 class KeywordCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating Keywords."""
     class Meta:
         model = Keyword
         fields = ['text', 'match_type', 'status', 'bid'] # ad_group_id will be passed in view
 
 
 class ProductTargetSerializer(serializers.ModelSerializer):
+    """Serializer for reading ProductTarget data."""
     class Meta:
         model = ProductTarget
         fields = ['id', 'ad_group', 'targeting_type', 'target_value', 'status', 'bid', 'created_at', 'updated_at']
         read_only_fields = ['id', 'ad_group', 'created_at', 'updated_at']
 
 class ProductTargetCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating ProductTargets."""
     class Meta:
         model = ProductTarget
         fields = ['targeting_type', 'target_value', 'status', 'bid']
 
 
 class NegativeKeywordSerializer(serializers.ModelSerializer):
+    """Serializer for reading NegativeKeyword data."""
     class Meta:
         model = NegativeKeyword
         fields = ['id', 'campaign', 'ad_group', 'keyword_text', 'match_type', 'status', 'created_at', 'updated_at']
@@ -42,6 +47,7 @@ class NegativeKeywordSerializer(serializers.ModelSerializer):
 class NegativeKeywordCreateUpdateSerializer(serializers.ModelSerializer):
     # For creation, campaign_id or ad_group_id will be set in the view based on the endpoint.
     # For update, these should not be changed.
+    """Serializer for creating and updating NegativeKeywords."""
     class Meta:
         model = NegativeKeyword
         fields = ['keyword_text', 'match_type', 'status']
@@ -49,12 +55,14 @@ class NegativeKeywordCreateUpdateSerializer(serializers.ModelSerializer):
 
 
 class NegativeProductTargetSerializer(serializers.ModelSerializer):
+    """Serializer for reading NegativeProductTarget data."""
     class Meta:
         model = NegativeProductTarget
         fields = ['id', 'campaign', 'ad_group', 'target_asin', 'status', 'created_at', 'updated_at']
         read_only_fields = ['id', 'campaign', 'ad_group', 'created_at', 'updated_at']
 
 class NegativeProductTargetCreateUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for creating and updating NegativeProductTargets."""
     class Meta:
         model = NegativeProductTarget
         fields = ['target_asin', 'status']
@@ -63,6 +71,7 @@ class NegativeProductTargetCreateUpdateSerializer(serializers.ModelSerializer):
 # --- AdGroup Serializers (may include nested children) ---
 
 class AdGroupSerializer(serializers.ModelSerializer):
+    """Serializer for reading AdGroup data, including nested targets."""
     keywords = KeywordSerializer(many=True, read_only=True)
     product_targets = ProductTargetSerializer(many=True, read_only=True)
     negative_keywords = NegativeKeywordSerializer(many=True, read_only=True)
@@ -83,6 +92,7 @@ class AdGroupCreateUpdateSerializer(serializers.ModelSerializer):
     # can be handled by separate endpoint calls after AdGroup is created/updated.
     # Or, implement create/update methods here if complex nested writes are needed.
     # For now, focusing on AdGroup fields.
+    """Serializer for creating and updating AdGroups."""
     class Meta:
         model = AdGroup
         fields = ['name', 'status', 'default_bid'] # campaign_id will be passed in view
@@ -91,6 +101,7 @@ class AdGroupCreateUpdateSerializer(serializers.ModelSerializer):
 # --- Campaign Serializers (may include nested children) ---
 
 class CampaignSerializer(serializers.ModelSerializer):
+    """Serializer for reading Campaign data, including nested ad groups and targets."""
     ad_groups = AdGroupSerializer(many=True, read_only=True)
     negative_keywords = NegativeKeywordSerializer(many=True, read_only=True) # Campaign-level
     negative_product_targets = NegativeProductTargetSerializer(many=True, read_only=True) # Campaign-level
@@ -125,7 +136,7 @@ class CampaignCreateUpdateSerializer(serializers.ModelSerializer):
     initial_keywords = KeywordCreateUpdateSerializer(many=True, required=False, write_only=True)
     initial_product_targets = ProductTargetCreateUpdateSerializer(many=True, required=False, write_only=True)
     # We could also add initial_negative_keywords etc. if the workflow demands it for campaign creation.
-
+    """Serializer for creating and updating Campaigns, including linking products and initial targets."""
     class Meta:
         model = Campaign
         fields = [

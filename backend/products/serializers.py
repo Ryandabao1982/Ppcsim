@@ -2,6 +2,10 @@ from rest_framework import serializers
 from .models import Product
 
 class ProductSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Product model.
+    Used for listing products via the API.
+    """
     class Meta:
         model = Product
         fields = [

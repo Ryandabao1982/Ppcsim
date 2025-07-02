@@ -2,6 +2,10 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 class Product(models.Model):
+    """
+    Represents a product in the simulator's catalog.
+    Stores core product attributes, pricing, and baseline performance/market factors.
+    """
     asin = models.CharField(_("ASIN"), max_length=20, unique=True, db_index=True)
     product_name = models.CharField(_("Product Name"), max_length=255)
     category = models.CharField(_("Category"), max_length=100, blank=True, null=True, db_index=True)

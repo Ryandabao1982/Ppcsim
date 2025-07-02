@@ -3,6 +3,10 @@ from .models import Product
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
+    """
+    Admin configuration for the Product model.
+    Customizes how products are displayed and managed in the Django admin interface.
+    """
     list_display = (
         'asin',
         'product_name',

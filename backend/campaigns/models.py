@@ -54,6 +54,10 @@ class NegativeMatchTypeChoices(models.TextChoices): # For Negative Keywords
 # If products.models also defines/needs it, ensure consistency.
 # Let's assume it's defined here for now.
 class CampaignProductLink(models.Model):
+    """
+    Association table for the many-to-many relationship between Campaigns and Products.
+    Specifies which products are advertised in a given campaign.
+    """
     campaign = models.ForeignKey('Campaign', on_delete=models.CASCADE)
     product = models.ForeignKey('products.Product', on_delete=models.CASCADE) # Assuming products app and Product model
 
@@ -65,6 +69,11 @@ class CampaignProductLink(models.Model):
 
 # --- Core Models ---
 class Campaign(models.Model):
+    """
+    Represents an advertising campaign created by a user.
+    Contains settings like budget, duration, bidding strategy, and links to
+    advertised products, ad groups, and campaign-level negative targets.
+    """
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -120,6 +129,11 @@ class Campaign(models.Model):
 
 
 class AdGroup(models.Model):
+    """
+    Represents an ad group within a campaign.
+    Contains settings like default bid and links to keywords, product targets,
+    and ad group-level negative targets.
+    """
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='ad_groups')
     name = models.CharField(_("Ad Group Name"), max_length=255, db_index=True)
     status = models.CharField(
@@ -149,6 +163,10 @@ class AdGroup(models.Model):
 
 
 class Keyword(models.Model):
+    """
+    Represents a targeted keyword within an ad group.
+    Includes text, match type, bid, and status.
+    """
     ad_group = models.ForeignKey(AdGroup, on_delete=models.CASCADE, related_name='keywords')
     text = models.CharField(_("Keyword Text"), max_length=255, db_index=True)
     match_type = models.CharField(
@@ -177,6 +195,10 @@ class Keyword(models.Model):
 
 
 class ProductTarget(models.Model):
+    """
+    Represents a product target (ASIN or Category) within an ad group.
+    Includes targeting type, value, bid, and status.
+    """
     ad_group = models.ForeignKey(AdGroup, on_delete=models.CASCADE, related_name='product_targets')
     targeting_type = models.CharField(
         _("Targeting Type"),
@@ -215,6 +237,10 @@ class ProductTarget(models.Model):
 
 
 class NegativeKeyword(models.Model):
+    """
+    Represents a negative keyword, scoped to either a Campaign or an AdGroup.
+    Used to prevent ads from showing on irrelevant search terms.
+    """
     keyword_text = models.CharField(_("Negative Keyword Text"), max_length=255, db_index=True)
     match_type = models.CharField(
         _("Match Type"),
@@ -277,6 +303,10 @@ class NegativeKeyword(models.Model):
 
 
 class NegativeProductTarget(models.Model):
+    """
+    Represents a negative product target (ASIN-only for now), scoped to either a Campaign or an AdGroup.
+    Used to prevent ads from showing on specific product detail pages.
+    """
     target_asin = models.CharField(_("Target ASIN"), max_length=20, db_index=True)
     status = models.CharField( # Reusing KeywordStatus for Enabled/Archived
         _("Status"),

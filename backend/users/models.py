@@ -50,6 +50,10 @@ class CustomUserManager(BaseUserManager):
 
 
 class CustomUser(AbstractUser):
+    """
+    Custom User model where email is the primary identifier for authentication.
+    Username is optional.
+    """
     # Set username to None to remove it completely.
     # This requires more changes (e.g. in admin, forms).
     # username = None

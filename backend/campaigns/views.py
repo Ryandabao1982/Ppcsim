@@ -58,24 +58,66 @@ class CampaignViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return CampaignCreateUpdateSerializer
-        return CampaignSerializer
-
 from decimal import Decimal # Import Decimal
-from products.models import Product # For fetching product for competitive_intensity
+from products.models import Product as ProductModel # For fetching product for competitive_intensity, aliased
+from campaigns.models import KeywordStatusChoices # For AdGroup defaults
 
-# ... (IsOwner class remains the same) ...
+# Custom Permission for checking object ownership against request.user
+# IsOwner class definition (already present and correct)
 
-class CampaignViewSet(viewsets.ModelViewSet):
-    # ... (queryset and permission_classes remain the same) ...
-
-    def get_serializer_class(self):
-        if self.action in ['create', 'update', 'partial_update']:
-            return CampaignCreateUpdateSerializer
-        return CampaignSerializer
+# CampaignViewSet definition (the first one is the correct one to keep and modify)
+# The second, duplicated CampaignViewSet definition will be removed by this search and replace.
+# The perform_create logic from the second definition will be merged into the first one.
 
     def perform_create(self, serializer):
-        # Apply default daily budget if not provided
-        daily_budget = serializer.validated_data.get('daily_budget')
+        # The serializer's create method already handles advertised_product_ids
+        initial_keywords_data = serializer.validated_data.pop('initial_keywords', [])
+        initial_product_targets_data = serializer.validated_data.pop('initial_product_targets', [])
+
+        # Ensure default daily_budget
+        current_validated_data = serializer.validated_data.copy() # Work on a copy
+        if 'daily_budget' not in current_validated_data or current_validated_data['daily_budget'] is None:
+            current_validated_data['daily_budget'] = Decimal("15.00")
+
+        campaign = serializer.save(user=self.request.user, **current_validated_data)
+
+        # Determine default bid based on competitive intensity of one advertised product
+        default_bid_for_targets = Decimal("1.00") # Base default
+        if campaign.advertised_products.exists():
+            # Ensure ProductModel is used if 'Product' is ambiguous
+            first_product = campaign.advertised_products.first() # ProductModel.objects.get(id=campaign.advertised_products.first().id)
+            if first_product:
+                if first_product.competitive_intensity == 'high':
+                    default_bid_for_targets = Decimal("1.25")
+                elif first_product.competitive_intensity == 'low':
+                    default_bid_for_targets = Decimal("0.70")
+
+        targeting_type = campaign.targeting_type
+
+        if targeting_type:
+            default_ad_group_name = "Default Auto Ad Group" if targeting_type == 'auto' else "Default Manual Ad Group"
+            ad_group, created = AdGroup.objects.get_or_create(
+                campaign=campaign,
+                name=default_ad_group_name,
+                defaults={'status': KeywordStatusChoices.ENABLED, 'default_bid': default_bid_for_targets}
+            )
+
+            if targeting_type == 'manual':
+                if initial_keywords_data:
+                    for kw_data in initial_keywords_data:
+                        kw_data.pop('ad_group', None)
+                        if 'bid' not in kw_data or kw_data['bid'] is None:
+                            kw_data['bid'] = default_bid_for_targets
+                        Keyword.objects.create(ad_group=ad_group, **kw_data)
+
+                if initial_product_targets_data:
+                    for pt_data in initial_product_targets_data:
+                        pt_data.pop('ad_group', None)
+                        if 'bid' not in pt_data or pt_data['bid'] is None:
+                            pt_data['bid'] = default_bid_for_targets
+                        ProductTarget.objects.create(ad_group=ad_group, **pt_data)
+
+# ViewSets for resources nested under Campaign and AdGroup
         if daily_budget is None:
             # serializer.validated_data['daily_budget'] = Decimal("15.00") # Set default
             # This should be handled by the model default or serializer default if possible,
@@ -145,6 +187,10 @@ class CampaignViewSet(viewsets.ModelViewSet):
 # to make URL parameter handling (campaign_pk, ad_group_pk) more explicit.
 
 class AdGroupViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for managing AdGroups within a specific Campaign.
+    Handles CRUD operations for AdGroups.
+    """
     serializer_class = AdGroupSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner] # IsOwner will check via obj.campaign.user
 
@@ -171,6 +217,10 @@ class AdGroupViewSet(viewsets.ModelViewSet):
 
 # Generic ViewSet for Ad Group Children (Keywords, ProductTargets, NegativeKeywords, NegativeProductTargets)
 class BaseAdGroupChildViewSet(viewsets.ModelViewSet):
+    """
+    Base ViewSet for resources that are children of an AdGroup (e.g., Keywords, ProductTargets).
+    Handles queryset filtering and creation context based on ad_group_pk and campaign_pk from URL.
+    """
     permission_classes = [permissions.IsAuthenticated, IsOwner] # IsOwner checks via ad_group.campaign.user
 
     def get_ad_group(self):
@@ -195,6 +245,7 @@ class BaseAdGroupChildViewSet(viewsets.ModelViewSet):
         serializer.save(ad_group=ad_group)
 
 class KeywordViewSet(BaseAdGroupChildViewSet):
+    """ViewSet for managing Keywords within an AdGroup."""
     model = Keyword
     serializer_class = KeywordSerializer
     def get_serializer_class(self):
@@ -203,6 +254,7 @@ class KeywordViewSet(BaseAdGroupChildViewSet):
         return KeywordSerializer
 
 class ProductTargetViewSet(BaseAdGroupChildViewSet):
+    """ViewSet for managing ProductTargets within an AdGroup."""
     model = ProductTarget
     serializer_class = ProductTargetSerializer
     def get_serializer_class(self):
@@ -211,6 +263,7 @@ class ProductTargetViewSet(BaseAdGroupChildViewSet):
         return ProductTargetSerializer
 
 class AdGroupNegativeKeywordViewSet(BaseAdGroupChildViewSet):
+    """ViewSet for managing NegativeKeywords at the AdGroup level."""
     model = NegativeKeyword
     serializer_class = NegativeKeywordSerializer
     def get_serializer_class(self):
@@ -224,6 +277,7 @@ class AdGroupNegativeKeywordViewSet(BaseAdGroupChildViewSet):
 
 
 class AdGroupNegativeProductTargetViewSet(BaseAdGroupChildViewSet):
+    """ViewSet for managing NegativeProductTargets at the AdGroup level."""
     model = NegativeProductTarget
     serializer_class = NegativeProductTargetSerializer
     def get_serializer_class(self):
@@ -238,6 +292,10 @@ class AdGroupNegativeProductTargetViewSet(BaseAdGroupChildViewSet):
 
 # ViewSets for Campaign-Level Negatives
 class BaseCampaignChildViewSet(viewsets.ModelViewSet):
+    """
+    Base ViewSet for resources that are direct children of a Campaign (e.g., Campaign-level NegativeKeywords).
+    Handles queryset filtering and creation context based on campaign_pk from URL.
+    """
     permission_classes = [permissions.IsAuthenticated, IsOwner] # IsOwner checks via campaign.user
 
     def get_campaign(self):
@@ -255,6 +313,7 @@ class BaseCampaignChildViewSet(viewsets.ModelViewSet):
 
 
 class CampaignNegativeKeywordViewSet(BaseCampaignChildViewSet):
+    """ViewSet for managing NegativeKeywords at the Campaign level."""
     model = NegativeKeyword
     serializer_class = NegativeKeywordSerializer
     def get_serializer_class(self):
@@ -268,6 +327,7 @@ class CampaignNegativeKeywordViewSet(BaseCampaignChildViewSet):
 
 
 class CampaignNegativeProductTargetViewSet(BaseCampaignChildViewSet):
+    """ViewSet for managing NegativeProductTargets at the Campaign level."""
     model = NegativeProductTarget
     serializer_class = NegativeProductTargetSerializer
     def get_serializer_class(self):
@@ -282,7 +342,11 @@ class CampaignNegativeProductTargetViewSet(BaseCampaignChildViewSet):
 
 # Generic update/delete for NegativeKeyword and NegativeProductTarget by their own ID
 # These require checking ownership through their parent campaign/adgroup.
-class NegativeKeywordDetailViewSet(generics.RetrieveUpdateDestroyAPIView): # Changed from viewsets
+class NegativeKeywordDetailViewSet(generics.RetrieveUpdateDestroyAPIView):
+    """
+    API endpoint for retrieving, updating, or deleting a specific NegativeKeyword by its ID.
+    Ownership is checked via the IsOwner permission.
+    """
     queryset = NegativeKeyword.objects.all()
     serializer_class = NegativeKeywordSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwner] # IsOwner checks parentage
