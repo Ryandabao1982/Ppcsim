@@ -73,6 +73,20 @@ class Product(models.Model):
     def __str__(self):
         return f"{self.product_name} (ASIN: {self.asin})"
 
+    @property
+    def break_even_acos(self) -> float:
+        """
+        Calculates the break-even Advertising Cost of Sales (ACoS) for the product.
+        Break-even ACoS = (Cost of Goods Sold / Average Selling Price) * 100.
+        This is the ACoS at which the ad spend equals the profit margin on the sale.
+        Returns 0.0 if avg_selling_price is zero to prevent division by zero errors.
+        """
+        if self.avg_selling_price and self.avg_selling_price > 0:
+            # Ensure cost_of_goods_sold is not None, default to 0 if it is for safety, though it shouldn't be.
+            cogs = self.cost_of_goods_sold if self.cost_of_goods_sold is not None else 0
+            return float((cogs / self.avg_selling_price) * 100)
+        return 0.0
+
     class Meta:
         verbose_name = _("Product")
         verbose_name_plural = _("Products")

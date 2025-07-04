@@ -58,38 +58,36 @@ class CampaignViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return CampaignCreateUpdateSerializer
-from decimal import Decimal # Import Decimal
-from products.models import Product as ProductModel # For fetching product for competitive_intensity, aliased
-from campaigns.models import KeywordStatusChoices # For AdGroup defaults
+        # The line below was causing the IndentationError and seems to be a remnant of a bad merge/edit.
+        # return CampaignSerializer # This was the original line before the duplicated imports and perform_create method.
 
-# Custom Permission for checking object ownership against request.user
-# IsOwner class definition (already present and correct)
-
-# CampaignViewSet definition (the first one is the correct one to keep and modify)
-# The second, duplicated CampaignViewSet definition will be removed by this search and replace.
-# The perform_create logic from the second definition will be merged into the first one.
-
+    # The following perform_create method is the one that was correctly implemented
+    # and should be the only one in this ViewSet.
     def perform_create(self, serializer):
-        # The serializer's create method already handles advertised_product_ids
+        from decimal import Decimal # Import Decimal here, locally if not already at top
+        from products.models import Product as ProductModel # For fetching product
+        from campaigns.models import KeywordStatusChoices # For AdGroup defaults
+
         initial_keywords_data = serializer.validated_data.pop('initial_keywords', [])
         initial_product_targets_data = serializer.validated_data.pop('initial_product_targets', [])
 
-        # Ensure default daily_budget
-        current_validated_data = serializer.validated_data.copy() # Work on a copy
+        current_validated_data = serializer.validated_data.copy()
         if 'daily_budget' not in current_validated_data or current_validated_data['daily_budget'] is None:
             current_validated_data['daily_budget'] = Decimal("15.00")
 
         campaign = serializer.save(user=self.request.user, **current_validated_data)
 
-        # Determine default bid based on competitive intensity of one advertised product
-        default_bid_for_targets = Decimal("1.00") # Base default
+        default_bid_for_targets = Decimal("1.00")
         if campaign.advertised_products.exists():
-            # Ensure ProductModel is used if 'Product' is ambiguous
-            first_product = campaign.advertised_products.first() # ProductModel.objects.get(id=campaign.advertised_products.first().id)
-            if first_product:
-                if first_product.competitive_intensity == 'high':
+            first_product_instance = campaign.advertised_products.first()
+            if first_product_instance:
+                # Assuming ProductModel is the correct model for products, fetched via ORM
+                # No need to re-fetch if first_product_instance is already a ProductModel instance.
+                # If it's just an ID or a different representation, fetching might be needed.
+                # For now, assume first_product_instance is a full Product object.
+                if first_product_instance.competitive_intensity == 'high':
                     default_bid_for_targets = Decimal("1.25")
-                elif first_product.competitive_intensity == 'low':
+                elif first_product_instance.competitive_intensity == 'low':
                     default_bid_for_targets = Decimal("0.70")
 
         targeting_type = campaign.targeting_type
@@ -116,71 +114,6 @@ from campaigns.models import KeywordStatusChoices # For AdGroup defaults
                         if 'bid' not in pt_data or pt_data['bid'] is None:
                             pt_data['bid'] = default_bid_for_targets
                         ProductTarget.objects.create(ad_group=ad_group, **pt_data)
-
-# ViewSets for resources nested under Campaign and AdGroup
-        if daily_budget is None:
-            # serializer.validated_data['daily_budget'] = Decimal("15.00") # Set default
-            # This should be handled by the model default or serializer default if possible,
-            # or set before calling serializer.save() if it's a view-level default.
-            # For now, assume model default or serializer handles it.
-            # If it must be done here, it's:
-            # campaign = serializer.save(user=self.request.user, daily_budget=Decimal("15.00"))
-            # Let's assume the serializer will pass it through or model has default.
-            # The model does not have a default for daily_budget, so we should set it here.
-            pass # Will handle defaults below before save or in serializer.
-
-        # The serializer's create method already handles advertised_product_ids
-        # We need to handle initial_keywords and initial_product_targets
-        initial_keywords_data = serializer.validated_data.pop('initial_keywords', [])
-        initial_product_targets_data = serializer.validated_data.pop('initial_product_targets', [])
-
-        # Ensure default daily_budget
-        if 'daily_budget' not in serializer.validated_data or serializer.validated_data['daily_budget'] is None:
-            validated_data_with_defaults = {**serializer.validated_data, 'daily_budget': Decimal("15.00")}
-        else:
-            validated_data_with_defaults = serializer.validated_data
-
-        campaign = serializer.save(user=self.request.user, **validated_data_with_defaults)
-
-
-        # Determine default bid based on competitive intensity of one advertised product
-        default_bid_for_targets = Decimal("1.00") # Base default
-        if campaign.advertised_products.exists():
-            first_product = campaign.advertised_products.first()
-            if first_product: # Should exist if campaign.advertised_products.exists()
-                if first_product.competitive_intensity == 'high':
-                    default_bid_for_targets = Decimal("1.25")
-                elif first_product.competitive_intensity == 'low':
-                    default_bid_for_targets = Decimal("0.70")
-
-        # Handle creation of default AdGroup and initial targets if applicable
-        targeting_type = campaign.targeting_type # From validated_data or model default
-
-        if targeting_type: # Only create default ad group if targeting type is set (e.g. for SP Manual/Auto)
-            default_ad_group_name = "Default Auto Ad Group" if targeting_type == 'auto' else "Default Manual Ad Group"
-            # Check if an ad group with this name already exists for this campaign to avoid duplicates if re-saving
-            ad_group, created = AdGroup.objects.get_or_create(
-                campaign=campaign,
-                name=default_ad_group_name,
-                defaults={'status': KeywordStatusChoices.ENABLED, 'default_bid': default_bid_for_targets}
-            )
-
-            if targeting_type == 'manual':
-                if initial_keywords_data:
-                    for kw_data in initial_keywords_data:
-                        kw_data.pop('ad_group', None) # Remove if present, will be set
-                        # Apply default bid if not provided in kw_data
-                        if 'bid' not in kw_data or kw_data['bid'] is None:
-                            kw_data['bid'] = default_bid_for_targets
-                        Keyword.objects.create(ad_group=ad_group, **kw_data)
-
-                if initial_product_targets_data:
-                    for pt_data in initial_product_targets_data:
-                        pt_data.pop('ad_group', None)
-                        if 'bid' not in pt_data or pt_data['bid'] is None:
-                            pt_data['bid'] = default_bid_for_targets
-                        ProductTarget.objects.create(ad_group=ad_group, **pt_data)
-        # serializer.save(user=self.request.user) # Original call
 
 # ViewSets for resources nested under Campaign and AdGroup
 # We'll use more specific ListCreateAPIView and RetrieveUpdateDestroyAPIView for nested resources

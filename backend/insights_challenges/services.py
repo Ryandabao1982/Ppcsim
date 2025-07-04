@@ -1,185 +1,253 @@
 import datetime
 from decimal import Decimal
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Sum, Avg, F, Case, When, Value, ExpressionWrapper, fields
+from django.db.models import Sum, Avg, F, Case, When, Value, ExpressionWrapper, fields, Q
 from django.db.models.functions import Coalesce
 
 from .models import Challenge, StudentChallengeProgress, ChallengeStatusChoices
-from performance.models import AdPerformanceMetric # To fetch data for checking criteria
-from products.models import Product # To get product details like COGS for criteria
-from campaigns.models import Campaign # To link criteria to specific campaigns
+from performance.models import AdPerformanceMetric
+from products.models import Product
+from campaigns.models import Campaign
 
-# User model from settings
 from django.conf import settings
 User = settings.AUTH_USER_MODEL
 
 
-def start_challenge_for_user(user_id: int, challenge_id: int, current_sim_date: datetime.date) -> Optional[StudentChallengeProgress]:
+def start_challenge_for_user(user_id: int, challenge_id: int) -> Optional[StudentChallengeProgress]:
     """
-    Starts a challenge for a user if they haven't started it or have a non-active attempt.
-    Returns the StudentChallengeProgress object or None if already actively pursuing.
+    Starts a challenge for a user.
+    A new StudentChallengeProgress record is created for each attempt.
     """
-    user = User.objects.get(id=user_id)
-    challenge = Challenge.objects.filter(id=challenge_id, is_active=True).first()
-
-    if not challenge:
+    try:
+        user = User.objects.get(id=user_id)
+        challenge = Challenge.objects.get(id=challenge_id, is_active=True)
+    except User.DoesNotExist:
+        print(f"User ID {user_id} not found.")
+        return None
+    except Challenge.DoesNotExist:
         print(f"Challenge ID {challenge_id} not found or not active.")
         return None
 
-    # Check for existing active challenge attempt
-    existing_active_attempt = StudentChallengeProgress.objects.filter(
-        user=user,
-        challenge=challenge,
-        status=ChallengeStatusChoices.ACTIVE
-    ).first()
-
-    if existing_active_attempt:
-        print(f"User {user.email} already has an active attempt for challenge '{challenge.name}'.")
-        return existing_active_attempt # Or return None/raise error
-
-    # TODO: Implement logic for starting_conditions_json if it involves resetting parts of sim environment.
-    # For now, we just record the start.
+    # TODO: Implement logic for scenario_constraints_json if it involves resetting parts of sim environment
+    # For V1, we just record the start. The student is expected to set up based on scenario_details.
 
     progress = StudentChallengeProgress.objects.create(
         user=user,
         challenge=challenge,
         status=ChallengeStatusChoices.ACTIVE,
-        start_sim_date=current_sim_date, # The week the challenge starts
-        progress_details_json={"log": [{"event": "Challenge started", "date": current_sim_date.isoformat()}]}
+        start_time=timezone.now(), # Records the actual server time when challenge is started
+        progress_details={"log": [{"event": "Challenge started", "timestamp": timezone.now().isoformat()}]}
     )
-    print(f"Challenge '{challenge.name}' started for user {user.email} on sim date {current_sim_date}.")
+    print(f"Challenge '{challenge.title}' started for user {user.email} at {progress.start_time}.")
     return progress
+
+
+def _get_challenge_metric_value(
+    progress_instance: StudentChallengeProgress,
+    metric_config: Dict[str, Any],
+    period_start_date: datetime.date,
+    period_end_date: datetime.date
+) -> Tuple[Optional[Decimal], str]:
+    """
+    Calculates the actual value of a specific metric for a challenge.
+    Returns the value and a unit/description string.
+    """
+    user = progress_instance.user
+    challenge = progress_instance.challenge
+    metric_name = metric_config["name"]
+    # scope = metric_config.get("scope") # e.g., "overall_challenge", "campaign_X", "product_asin_Y"
+    # scope_value = metric_config.get("scope_value")
+
+    # Determine relevant campaigns based on challenge.product_context_asins
+    # This is a simplification; a more robust system might tag campaigns created/used for a challenge.
+    relevant_campaign_ids = []
+    if challenge.product_context_asins:
+        relevant_campaign_ids = list(
+            Campaign.objects.filter(
+                user=user,
+                advertised_products__asin__in=challenge.product_context_asins
+            ).distinct().values_list('id', flat=True)
+        )
+
+    if not relevant_campaign_ids and challenge.product_context_asins: # If ASINs are specified but no campaigns found for them
+        print(f"Warning: No campaigns found for user {user.id} advertising ASINs {challenge.product_context_asins} for challenge '{challenge.title}'.")
+        # Depending on metric, this might mean it can't be calculated or defaults to 0/inf.
+
+    base_query = AdPerformanceMetric.objects.filter(
+        user=user,
+        metric_date__range=(period_start_date, period_end_date)
+    )
+    if relevant_campaign_ids: # Filter by relevant campaigns if context ASINs led to some
+        base_query = base_query.filter(campaign_id__in=relevant_campaign_ids)
+    # If no product_context_asins, metrics are truly "overall" for the user during the period.
+
+    if metric_name == "TotalAdAttributedSalesCount":
+        aggregation = base_query.aggregate(total_orders=Coalesce(Sum('orders'), 0))
+        return Decimal(aggregation['total_orders']), "orders"
+
+    elif metric_name == "FinalOverallACoS": # ACoS over the entire challenge period for relevant campaigns
+        aggregation = base_query.aggregate(
+            total_spend=Coalesce(Sum('spend'), Decimal('0.00')),
+            total_sales=Coalesce(Sum('sales'), Decimal('0.00'))
+        )
+        if aggregation['total_sales'] > 0:
+            return (aggregation['total_spend'] / aggregation['total_sales'] * 100), "% ACoS"
+        return Decimal('inf') if aggregation['total_spend'] > 0 else Decimal('0.00'), "% ACoS"
+
+    elif metric_name == "CampaignACoS": # This would need a scope_value for campaign_id
+        # For V1, this specific metric might be hard if not tied to overall or product_context_asins.
+        # Assuming it means overall ACoS for campaigns linked to product_context_asins.
+        # This is effectively the same as FinalOverallACoS if product_context_asins are used.
+        # If a specific campaign ID was stored in scenario_constraints, we could use it.
+        # For now, let's make it behave like FinalOverallACoS.
+        aggregation = base_query.aggregate(
+            total_spend=Coalesce(Sum('spend'), Decimal('0.00')),
+            total_sales=Coalesce(Sum('sales'), Decimal('0.00'))
+        )
+        if aggregation['total_sales'] > 0:
+            return (aggregation['total_spend'] / aggregation['total_sales'] * 100), "% ACoS"
+        return Decimal('inf') if aggregation['total_spend'] > 0 else Decimal('0.00'), "% ACoS"
+
+    elif metric_name == "WeeklySalesVolumeIncreasePercent":
+        # This requires a baseline. For V1, this is complex.
+        # Ryan's spec: "maintaining or increasing weekly sales volume by at least 10%"
+        # This implies comparison to a pre-challenge baseline or week-over-week within the challenge.
+        # Simplified V1: Check if current week's sales (for relevant campaigns) are X% > Y.
+        # This requires storing a baseline or more complex WoW logic.
+        # For now, this metric will be hard to implement fully without baseline context.
+        # Placeholder: Return 0, indicating not met or not calculable yet.
+        # A real implementation would fetch sales for the current week of the challenge
+        # and compare to a baseline (e.g., sales in the week prior to challenge.start_time,
+        # or an average of prior weeks, or a fixed value from scenario_constraints_json).
+
+        # Let's assume for "The ACoS Turnaround", the goal is against the sales of the *first week* of the challenge,
+        # or a predefined baseline if we add it to scenario_constraints_json.
+        # For "Scale to Dominate", it's also increase from baseline.
+
+        # This needs more thought on how baselines are established or passed.
+        # For this iteration, we will assume it means the total sales during the challenge period
+        # must be a certain amount, which is simpler.
+        # Let's redefine this in success_criteria to be "TotalSalesValue" for now.
+        # Or, if it MUST be increase, we'd need to fetch data from *before* progress_instance.start_time.
+        print(f"Warning: Metric '{metric_name}' requires baseline comparison, V1 implementation is simplified or placeholder.")
+
+        # Example: If we had a baseline in constraints:
+        # baseline_sales = Decimal(challenge.scenario_constraints_json.get("baseline_weekly_sales", "0"))
+        # current_weekly_sales = base_query.filter(metric_date__range=(period_end_date - datetime.timedelta(days=6), period_end_date))\
+        # .aggregate(current_sales=Coalesce(Sum('sales'), Decimal('0.00')))['current_sales']
+        # if baseline_sales > 0:
+        # return ((current_weekly_sales - baseline_sales) / baseline_sales * 100), "% increase"
+        # return Decimal('inf') if current_weekly_sales > 0 else Decimal('0.00'), "% increase"
+        return Decimal('0.00'), "% (placeholder)"
+
+
+    print(f"Warning: Unknown metric name '{metric_name}' in challenge success criteria.")
+    return None, ""
 
 
 def check_single_challenge_progress(progress_instance: StudentChallengeProgress, current_sim_week_start_date: datetime.date):
     """
     Checks and updates the progress for a single active challenge instance.
-    This is called after each simulation week.
+    This is called after each simulation week (after its data is generated).
     """
     if progress_instance.status != ChallengeStatusChoices.ACTIVE:
-        return # Only process active challenges
+        return
 
     user = progress_instance.user
     challenge = progress_instance.challenge
 
-    # Calculate how many full weeks have passed since the challenge started
-    # current_sim_week_start_date is the beginning of the *current* week being processed by simulation
-    # So, if a challenge started on this date, zero full weeks have passed yet.
-    # If it started last week, one full week has passed.
-    days_passed = (current_sim_week_start_date - progress_instance.start_sim_date).days
-    weeks_passed = days_passed // 7
-    # The metrics for the "current_sim_week_start_date" week are generated *after* this check would run for *that week*.
-    # So, if current_sim_week_start_date is W2_Monday, and challenge started W1_Monday,
-    # weeks_passed is 1. We analyze data from W1_Monday to W1_Sunday.
+    # Determine the actual period of performance data to analyze for this check.
+    # This check runs *after* the simulation for `current_sim_week_start_date`'s week has completed.
+    # So, the data includes everything up to `current_sim_week_start_date + 6 days`.
+    challenge_data_start_date = progress_instance.start_time.date()
+    challenge_data_end_date = current_sim_week_start_date + datetime.timedelta(days=6)
 
-    challenge_period_start_date = progress_instance.start_sim_date
-    # The end of the period to analyze is the Sunday of the last fully completed week.
-    # If current_sim_week_start_date is the start of the current week,
-    # then the data to analyze is up to `current_sim_week_start_date - 1 day`.
-    challenge_period_end_date = current_sim_week_start_date + datetime.timedelta(days=6) # End of current sim week
+    # Calculate how many full simulation weeks have passed since the challenge started.
+    # If start_time was during current_sim_week_start_date's week, 0 full weeks have passed before this check.
+    # The check is for the week *ending* on challenge_data_end_date.
+    days_active = (challenge_data_end_date - challenge_data_start_date).days + 1 # Inclusive days
+    weeks_completed = days_active // 7
 
-    all_criteria_met = True
+    all_mandatory_criteria_met = True
     current_metrics_snapshot = {}
 
-    # --- Evaluate Success Criteria ---
-    # This is a simplified V1 criteria evaluation.
-    # Example criteria: {"metric": "ACoS", "scope": "product_asin", "scope_value": "B0XYZ123",
-    #                    "condition": "less_than_or_equal_to", "target_value": 30.0}
-    for criterion in challenge.success_criteria_json:
-        metric_name = criterion.get("metric")
-        scope = criterion.get("scope")
-        scope_value = criterion.get("scope_value") # e.g., ASIN or Campaign Name/ID
-        condition = criterion.get("condition") # "less_than_or_equal_to", "greater_than_or_equal_to"
-        target_value = Decimal(str(criterion.get("target_value"))) # Ensure Decimal for comparison
+    time_limit_weeks = challenge.success_criteria.get("time_limit_weeks", float('inf'))
 
-        actual_value = None
+    for criterion_conf in challenge.success_criteria.get("metrics", []):
+        target_value = Decimal(str(criterion_conf["target"]))
+        condition_str = criterion_conf["condition"] # "ge", "le", "eq", "gt", "lt"
 
-        # Fetch relevant performance data for the challenge period so far
-        base_query = AdPerformanceMetric.objects.filter(
-            user=user,
-            metric_date__range=(challenge_period_start_date, challenge_period_end_date)
-        )
+        actual_value, unit = _get_challenge_metric_value(progress_instance, criterion_conf, challenge_data_start_date, challenge_data_end_date)
 
-        if scope == "product_asin":
-            # This requires linking AdPerformanceMetric to Product ASIN.
-            # AdPerformanceMetric is linked to Keyword/ProductTarget, which are in AdGroups, in Campaigns, which have Products.
-            # This is complex. For V1, let's assume 'scope_value' is a campaign_id for ACoS.
-            # Or, if we assume the challenge is about a specific product, all campaigns for that product.
-            # Simplified: Assume scope_value is campaign_id for now if metric is ACOS/Sales at campaign level.
-            if metric_name in ["ACoS", "Sales", "Orders"] and scope_value: # Assuming scope_value is campaign_id
-                try:
-                    # Ensure the campaign belongs to the user
-                    target_campaign = Campaign.objects.get(id=int(scope_value), user=user)
-                    perf_data = base_query.filter(campaign=target_campaign).aggregate(
-                        total_spend=Coalesce(Sum('spend'), Decimal('0.00')),
-                        total_sales=Coalesce(Sum('sales'), Decimal('0.00')),
-                        total_orders=Coalesce(Sum('orders'), 0)
-                    )
-                    if metric_name == "ACoS":
-                        actual_value = (perf_data['total_spend'] / perf_data['total_sales'] * 100) if perf_data['total_sales'] > 0 else Decimal('inf')
-                    elif metric_name == "Sales":
-                        actual_value = perf_data['total_sales']
-                    elif metric_name == "Orders":
-                         actual_value = perf_data['total_orders']
-                except Campaign.DoesNotExist:
-                    print(f"Challenge criterion campaign ID {scope_value} not found for user {user.email}.")
-                    all_criteria_met = False; break
-
-        current_metrics_snapshot[f"{metric_name}_{scope}_{scope_value or 'overall'}"] = float(actual_value) if actual_value is not None else None
+        metric_key = f"{criterion_conf['name']}"
+        current_metrics_snapshot[metric_key] = f"{actual_value:.2f} {unit}" if actual_value is not None and actual_value != Decimal('inf') else "N/A or Inf"
 
         if actual_value is None: # Criterion could not be evaluated
-            all_criteria_met = False; break
+            all_mandatory_criteria_met = False
+            continue # Check other criteria but overall won't pass
 
-        if condition == "less_than_or_equal_to":
-            if not (actual_value <= target_value): all_criteria_met = False; break
-        elif condition == "greater_than_or_equal_to":
-            if not (actual_value >= target_value): all_criteria_met = False; break
-        # Add more conditions as needed
+        met = False
+        if condition_str == "ge": met = actual_value >= target_value
+        elif condition_str == "le": met = actual_value <= target_value
+        elif condition_str == "eq": met = actual_value == target_value
+        elif condition_str == "gt": met = actual_value > target_value
+        elif condition_str == "lt": met = actual_value < target_value
 
-    # Update progress_details_json
-    progress_log = progress_instance.progress_details_json.get("log", [])
-    progress_log.append({
-        "week": weeks_passed + 1, # Current week number being completed
-        "date": current_sim_week_start_date.isoformat(),
+        if not met:
+            all_mandatory_criteria_met = False
+            # No break here, collect all metric snapshots for the log
+
+    # Update progress_details JSON
+    log_entry = {
+        "checked_on_sim_week_starting": current_sim_week_start_date.isoformat(),
+        "weeks_completed_in_challenge": weeks_completed,
         "snapshot": current_metrics_snapshot,
-        "criteria_met_this_check": all_criteria_met # if all criteria were met with current data
-    })
-    progress_instance.progress_details_json["log"] = progress_log
+        "all_mandatory_criteria_met_this_check": all_mandatory_criteria_met
+    }
+    if "log" not in progress_instance.progress_details: progress_instance.progress_details["log"] = []
+    progress_instance.progress_details["log"].append(log_entry)
 
     # --- Check for Challenge Completion or Failure ---
-    if all_criteria_met:
+    final_status_determined = False
+    if all_mandatory_criteria_met:
         progress_instance.status = ChallengeStatusChoices.COMPLETED_SUCCESS
-        progress_instance.outcome_determination_date = timezone.now()
-        print(f"Challenge '{challenge.name}' COMPLETED SUCCESSFULLY by user {user.email}.")
-    elif (weeks_passed + 1) >= challenge.simulated_weeks_duration:
-        # If it's the last week (e.g. duration is 4 weeks, and weeks_passed is 3, meaning 4th week just finished)
-        progress_instance.status = ChallengeStatusChoices.COMPLETED_FAILED_TIMEFRAME # Or FAILED_METRIC if not met
-        if not all_criteria_met: # If criteria weren't met by the end of the last week
-             progress_instance.status = ChallengeStatusChoices.COMPLETED_FAILED_METRIC
-        progress_instance.outcome_determination_date = timezone.now()
-        print(f"Challenge '{challenge.name}' FAILED (duration exceeded or metrics not met) for user {user.email}.")
+        progress_instance.completion_time = timezone.now()
+        final_status_determined = True
+        print(f"Challenge '{challenge.title}' COMPLETED SUCCESSFULLY by user {user.email}.")
 
-    progress_instance.last_updated_at = timezone.now()
-    progress_instance.save()
+    if not final_status_determined and weeks_completed >= time_limit_weeks:
+        # Time limit reached
+        if all_mandatory_criteria_met: # Should have been caught above, but as a safeguard
+            progress_instance.status = ChallengeStatusChoices.COMPLETED_SUCCESS
+        else:
+            progress_instance.status = ChallengeStatusChoices.COMPLETED_FAILED_METRIC # More specific than just timeframe
+        progress_instance.completion_time = timezone.now()
+        final_status_determined = True
+        print(f"Challenge '{challenge.title}' for user {user.email} ended. Status: {progress_instance.status}.")
+
+    if final_status_determined or progress_instance.is_dirty(): # is_dirty might not be available, save if log changed
+        progress_instance.last_updated_at = timezone.now()
+        progress_instance.save()
 
 
 def check_all_active_challenge_progress_for_user(user_id: int, current_sim_week_start_date: datetime.date):
     """
     Iterates over all active challenges for a user and checks their progress.
+    This is intended to be called after the simulation for `current_sim_week_start_date`'s week has run.
     """
     active_progresses = StudentChallengeProgress.objects.filter(
         user_id=user_id,
         status=ChallengeStatusChoices.ACTIVE
-    ).select_related('challenge', 'user') # Eager load for efficiency
+    ).select_related('challenge', 'user')
 
     if not active_progresses.exists():
-        print(f"No active challenges to check for user_id {user_id}.")
+        # print(f"No active challenges to check for user_id {user_id} for sim week starting {current_sim_week_start_date}.")
         return
 
-    print(f"Checking progress for {active_progresses.count()} active challenge(s) for user_id {user_id}...")
+    print(f"Checking progress for {active_progresses.count()} active challenge(s) for user_id {user_id} (sim week: {current_sim_week_start_date})...")
     for progress in active_progresses:
         check_single_challenge_progress(progress, current_sim_week_start_date)
-    print(f"Finished checking challenge progress for user_id {user_id}.")
+    print(f"Finished checking challenge progress for user_id {user_id} (sim week: {current_sim_week_start_date}).")

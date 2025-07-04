@@ -28,7 +28,7 @@ from django.conf import settings
 
 from campaigns.models import (
     Campaign, Keyword, ProductTarget, CampaignStatusChoices,
-    KeywordStatusChoices, ProductTargetStatusChoices, # Corrected Enum name
+    KeywordStatusChoices, ProductTargetStatusEnum, # Corrected Enum name
     MatchTypeChoices, ProductTargetingTypeChoices
 )
 from products.models import Product

@@ -4,22 +4,18 @@ from . import views
 
 # Using DefaultRouter for standard ViewSet actions
 router = DefaultRouter()
-router.register(r'challenges', views.ChallengeViewSet, basename='challenge') # For /api/challenges/ and /api/challenges/{pk}/
-router.register(r'student-insights', views.CoachInsightsLogViewSet, basename='student-insight') # For /api/student-insights/ and /api/student-insights/{pk}/
-# StudentChallengeProgress by its direct ID is handled by its ViewSet's default retrieve
-router.register(r'challenge-progress', views.StudentChallengeProgressViewSet, basename='student-challenge-progress')
+router.register(r'challenges', views.ChallengeViewSet, basename='challenge')
+router.register(r'coach-insights', views.CoachInsightsLogViewSet, basename='coach-insight')
+router.register(r'student-challenges', views.StudentChallengeProgressViewSet, basename='student-challenge')
 
 
 urlpatterns = [
-    path('', include(router.urls)), # Includes standard list/detail for ViewSets registered above
+    path('', include(router.urls)), # Includes standard list/detail and custom actions for ViewSets registered above
 
-    # Custom path for listing all of current user's challenge progresses
-    path('challenges/my-progress/',
-         views.MyStudentChallengeProgressListView.as_view(),
-         name='my-student-challenge-progress-list'),
+    # The MyStudentChallengeProgressListView path is removed as StudentChallengeProgressViewSet handles listing.
 
     # Note: The 'start' action on ChallengeViewSet is automatically routed by DRF's router:
-    # e.g. POST /api/challenges/{challenge_pk}/start/
+    # e.g. POST /api/insights-challenges/challenges/{challenge_pk}/start/ (prefix depends on main urls.py)
     # The 'mark_read' action on CoachInsightsLogViewSet is also auto-routed:
     # e.g. POST /api/student-insights/{insight_pk}/mark_read/
 ]

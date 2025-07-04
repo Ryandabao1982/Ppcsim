@@ -24,9 +24,9 @@ class CoachInsightsLogAdmin(admin.ModelAdmin):
 
 @admin.register(Challenge)
 class ChallengeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'difficulty_level', 'simulated_weeks_duration', 'is_active', 'created_at')
-    list_filter = ('difficulty_level', 'is_active')
-    search_fields = ('name', 'description', 'objective_text')
+    list_display = ('title', 'level', 'is_active', 'created_at') # Updated fields
+    list_filter = ('level', 'is_active') # Updated field
+    search_fields = ('title', 'description', 'objective_summary') # Updated fields
     readonly_fields = ('created_at', 'updated_at')
 
     # Could use a custom widget or validation for JSONFields if needed,
@@ -35,9 +35,9 @@ class ChallengeAdmin(admin.ModelAdmin):
 
 @admin.register(StudentChallengeProgress)
 class StudentChallengeProgressAdmin(admin.ModelAdmin):
-    list_display = ('user', 'challenge', 'status', 'start_sim_date', 'outcome_determination_date', 'last_updated_at')
-    list_filter = ('status', 'challenge__name', 'user__email')
-    search_fields = ('user__email', 'challenge__name')
+    list_display = ('user', 'challenge', 'status', 'start_time', 'completion_time', 'last_updated_at') # Updated fields
+    list_filter = ('status', 'challenge__title', 'user__email') # Updated field challenge__title
+    search_fields = ('user__email', 'challenge__title') # Updated field challenge__title
     readonly_fields = ('last_updated_at',)
-    date_hierarchy = 'start_sim_date'
+    date_hierarchy = 'start_time' # Updated field
     list_select_related = ('user', 'challenge') # Optimize queries
