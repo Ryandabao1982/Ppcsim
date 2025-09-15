@@ -1,0 +1,48 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: #F2F8FD; /* Very light desaturated blue */
+}
+
+.App {
+  text-align: center;
+}
+
+.App-header {
+  background-color: #A7D1F7; /* Primary light desaturated blue */
+  padding: 1rem;
+  margin-bottom: 2rem;
+  border-radius: 8px;
+}
+
+.App-header h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  color: white;
+  margin: 0;
+}
+
+.step-container {
+  /* This can be used for layout if needed, e.g., perspective for 3D transitions */
+}
+
+.step-content {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

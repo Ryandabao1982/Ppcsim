@@ -1,0 +1,68 @@
+/* src/styles/CampaignCreation.css */
+
+.campaign-creation-container {
+  background-color: #F2F8FD; /* Very light desaturated blue */
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 500px;
+  margin: 2rem auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.campaign-creation-container h2 {
+  font-family: 'Space Grotesk', sans-serif;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.campaign-creation-container p {
+  font-family: 'Inter', sans-serif;
+  color: #555;
+  margin-bottom: 2rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  color: #333;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #A7D1F7; /* Primary light desaturated blue */
+}
+
+.cta-button {
+  background-color: #C5A7F7; /* Accent soft purple */
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  width: 100%;
+}
+
+.cta-button:hover {
+  background-color: #b392e0;
+}
