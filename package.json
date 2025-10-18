@@ -1,0 +1,60 @@
+{
+  "name": "ppcsim-monorepo",
+  "version": "1.0.0",
+  "description": "Amazon PPC Simulator - Training platform for aspiring Virtual Assistants and PPC managers",
+  "private": true,
+  "workspaces": [
+    "src/backend",
+    "src/frontend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "test": "npm run test --workspaces",
+    "test:backend": "npm run test --workspace=backend",
+    "test:frontend": "npm run test --workspace=frontend",
+    "lint": "npm run lint --workspaces",
+    "lint:fix": "npm run lint:fix --workspaces",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "prepare": "husky install",
+    "migrate": "npm run migrate --workspace=backend",
+    "migrate:dev": "npm run migrate:dev --workspace=backend",
+    "seed": "npm run seed --workspace=backend"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.55.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "amazon",
+    "ppc",
+    "simulator",
+    "training",
+    "e-commerce",
+    "advertising"
+  ],
+  "author": "Ppcsim Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ryandabao1982/Ppcsim.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ryandabao1982/Ppcsim/issues"
+  },
+  "homepage": "https://github.com/Ryandabao1982/Ppcsim#readme"
+}
