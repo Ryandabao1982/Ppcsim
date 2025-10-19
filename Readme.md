@@ -284,9 +284,15 @@ Ppcsim/
 - [x] Database schema design
 - [x] Development environment setup
 
-### Phase 2: Core Features (Week 3-10)
+### Phase 2: Core Features (Week 3-10) 🚧 In Progress
+- [x] Backend folder structure and configuration
+- [x] Prisma schema implementation
+- [x] Campaign CRUD operations (backend)
+- [x] Frontend folder structure and configuration
+- [x] Redux store setup
+- [x] Campaign list display (frontend)
 - [ ] User authentication system
-- [ ] Campaign CRUD operations
+- [ ] Campaign creation form
 - [ ] Keyword management
 - [ ] Simulation engine
 - [ ] Performance dashboard

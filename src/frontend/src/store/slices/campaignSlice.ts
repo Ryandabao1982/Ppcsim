@@ -9,6 +9,8 @@ interface CampaignsState {
   error: string | null;
 }
 
+export type { CampaignsState };
+
 const initialState: CampaignsState = {
   campaigns: [],
   currentCampaign: null,
@@ -21,7 +23,7 @@ export const fetchCampaigns = createAsyncThunk(
   'campaigns/fetchAll',
   async (userId: number) => {
     const response = await campaignApi.getCampaigns(userId);
-    return response.data.campaigns;
+    return response.data.data.campaigns;
   }
 );
 
@@ -29,7 +31,7 @@ export const fetchCampaignById = createAsyncThunk(
   'campaigns/fetchById',
   async ({ id, userId }: { id: number; userId: number }) => {
     const response = await campaignApi.getCampaign(id, userId);
-    return response.data.campaign;
+    return response.data.data.campaign;
   }
 );
 
@@ -37,7 +39,7 @@ export const createCampaign = createAsyncThunk(
   'campaigns/create',
   async ({ userId, data }: { userId: number; data: CreateCampaignDto }) => {
     const response = await campaignApi.createCampaign(userId, data);
-    return response.data.campaign;
+    return response.data.data.campaign;
   }
 );
 
@@ -45,7 +47,7 @@ export const updateCampaign = createAsyncThunk(
   'campaigns/update',
   async ({ id, userId, data }: { id: number; userId: number; data: UpdateCampaignDto }) => {
     const response = await campaignApi.updateCampaign(id, userId, data);
-    return response.data.campaign;
+    return response.data.data.campaign;
   }
 );
 
