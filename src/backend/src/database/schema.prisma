@@ -1,0 +1,285 @@
+// Prisma schema for Amazon PPC Simulator
+// Database: PostgreSQL 15.x
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User Management
+// ============================================
+
+model User {
+  id               Int       @id @default(autoincrement())
+  email            String    @unique @db.VarChar(255)
+  passwordHash     String    @map("password_hash") @db.VarChar(255)
+  firstName        String    @map("first_name") @db.VarChar(100)
+  lastName         String    @map("last_name") @db.VarChar(100)
+  role             UserRole  @default(STUDENT)
+  emailVerified    Boolean   @default(false) @map("email_verified")
+  emailVerifiedAt  DateTime? @map("email_verified_at")
+  status           UserStatus @default(ACTIVE)
+  lastLoginAt      DateTime? @map("last_login_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  campaigns        Campaign[]
+  tutorialProgress TutorialProgress[]
+
+  @@index([email])
+  @@index([status])
+  @@index([role])
+  @@map("users")
+}
+
+enum UserRole {
+  STUDENT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+// ============================================
+// Campaign Management
+// ============================================
+
+model Campaign {
+  id                 Int             @id @default(autoincrement())
+  userId             Int             @map("user_id")
+  name               String          @db.VarChar(255)
+  campaignType       CampaignType    @default(SPONSORED_PRODUCTS) @map("campaign_type")
+  targetingType      TargetingType   @default(MANUAL) @map("targeting_type")
+  dailyBudget        Decimal         @db.Decimal(10, 2) @map("daily_budget")
+  status             CampaignStatus  @default(ACTIVE)
+  biddingStrategy    BiddingStrategy @default(MANUAL) @map("bidding_strategy")
+  startDate          DateTime        @default(now()) @map("start_date") @db.Date
+  endDate            DateTime?       @map("end_date") @db.Date
+  totalBudget        Decimal?        @db.Decimal(10, 2) @map("total_budget")
+
+  // Performance metrics cache
+  totalImpressions   BigInt          @default(0) @map("total_impressions")
+  totalClicks        Int             @default(0) @map("total_clicks")
+  totalConversions   Int             @default(0) @map("total_conversions")
+  totalSpend         Decimal         @default(0.00) @db.Decimal(10, 2) @map("total_spend")
+  totalSales         Decimal         @default(0.00) @db.Decimal(10, 2) @map("total_sales")
+
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adGroups           AdGroup[]
+  keywords           Keyword[]
+  performanceMetrics PerformanceMetric[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([campaignType])
+  @@index([createdAt])
+  @@map("campaigns")
+}
+
+enum CampaignType {
+  SPONSORED_PRODUCTS
+  SPONSORED_BRANDS
+  SPONSORED_DISPLAY
+}
+
+enum TargetingType {
+  MANUAL
+  AUTOMATIC
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum BiddingStrategy {
+  MANUAL
+  DYNAMIC_DOWN
+  DYNAMIC_UP_DOWN
+}
+
+// ============================================
+// Ad Group Management
+// ============================================
+
+model AdGroup {
+  id               Int      @id @default(autoincrement())
+  campaignId       Int      @map("campaign_id")
+  name             String   @db.VarChar(255)
+  defaultBid       Decimal  @db.Decimal(10, 2) @map("default_bid")
+  status           AdGroupStatus @default(ACTIVE)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  keywords         Keyword[]
+  products         Product[]
+
+  @@index([campaignId])
+  @@index([status])
+  @@map("ad_groups")
+}
+
+enum AdGroupStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+// ============================================
+// Keyword Management
+// ============================================
+
+model Keyword {
+  id                 Int             @id @default(autoincrement())
+  campaignId         Int             @map("campaign_id")
+  adGroupId          Int?            @map("ad_group_id")
+  keywordText        String          @map("keyword_text") @db.VarChar(255)
+  matchType          MatchType       @map("match_type")
+  bid                Decimal         @db.Decimal(10, 2)
+  status             KeywordStatus   @default(ACTIVE)
+  isNegative         Boolean         @default(false) @map("is_negative")
+
+  // Performance metrics cache
+  impressions        BigInt          @default(0)
+  clicks             Int             @default(0)
+  conversions        Int             @default(0)
+  spend              Decimal         @default(0.00) @db.Decimal(10, 2)
+  sales              Decimal         @default(0.00) @db.Decimal(10, 2)
+
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  campaign           Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  adGroup            AdGroup?        @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  performanceMetrics PerformanceMetric[]
+
+  @@index([campaignId])
+  @@index([adGroupId])
+  @@index([keywordText])
+  @@index([matchType])
+  @@index([status])
+  @@index([isNegative])
+  @@map("keywords")
+}
+
+enum MatchType {
+  BROAD
+  PHRASE
+  EXACT
+}
+
+enum KeywordStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+// ============================================
+// Product Management
+// ============================================
+
+model Product {
+  id               Int      @id @default(autoincrement())
+  adGroupId        Int      @map("ad_group_id")
+  asin             String   @db.VarChar(20)
+  sku              String?  @db.VarChar(100)
+  title            String   @db.VarChar(500)
+  price            Decimal  @db.Decimal(10, 2)
+  imageUrl         String?  @map("image_url") @db.VarChar(500)
+  status           ProductStatus @default(ACTIVE)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  adGroup          AdGroup  @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+
+  @@index([adGroupId])
+  @@index([asin])
+  @@map("products")
+}
+
+enum ProductStatus {
+  ACTIVE
+  PAUSED
+  OUT_OF_STOCK
+}
+
+// ============================================
+// Performance Metrics
+// ============================================
+
+model PerformanceMetric {
+  id               Int       @id @default(autoincrement())
+  campaignId       Int       @map("campaign_id")
+  keywordId        Int?      @map("keyword_id")
+  date             DateTime  @db.Date
+  hour             Int?      // Hour of day (0-23) for hourly metrics
+
+  // Core metrics
+  impressions      BigInt    @default(0)
+  clicks           Int       @default(0)
+  conversions      Int       @default(0)
+  spend            Decimal   @default(0.00) @db.Decimal(10, 2)
+  sales            Decimal   @default(0.00) @db.Decimal(10, 2)
+
+  // Calculated metrics
+  ctr              Decimal?  @db.Decimal(5, 4) // Click-through rate
+  cvr              Decimal?  @db.Decimal(5, 4) // Conversion rate
+  cpc              Decimal?  @db.Decimal(10, 2) // Cost per click
+  acos             Decimal?  @db.Decimal(5, 4) // Advertising cost of sale
+  roas             Decimal?  @db.Decimal(10, 2) // Return on ad spend
+
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  campaign         Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  keyword          Keyword?  @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, keywordId, date, hour])
+  @@index([campaignId])
+  @@index([keywordId])
+  @@index([date])
+  @@map("performance_metrics")
+}
+
+// ============================================
+// Tutorial & Learning
+// ============================================
+
+model TutorialProgress {
+  id               Int       @id @default(autoincrement())
+  userId           Int       @map("user_id")
+  tutorialId       String    @map("tutorial_id") @db.VarChar(100)
+  stepId           String    @map("step_id") @db.VarChar(100)
+  completed        Boolean   @default(false)
+  completedAt      DateTime? @map("completed_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tutorialId, stepId])
+  @@index([userId])
+  @@index([tutorialId])
+  @@map("tutorial_progress")
+}
