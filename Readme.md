@@ -113,9 +113,41 @@ Comprehensive documentation is available in the `/docs` directory:
 ### Prerequisites
 
 - Node.js 18.x or higher
-- PostgreSQL 15.x
-- Redis 7.x (for caching and sessions)
+- PostgreSQL 15.x (or use Docker)
+- Redis 7.x (or use Docker)
 - Docker & Docker Compose (recommended for local development)
+
+### Quick Start with Setup Script (Recommended)
+
+The easiest way to get started is using our automated setup script:
+
+```bash
+# Clone the repository
+git clone https://github.com/Ryandabao1982/Ppcsim.git
+cd Ppcsim
+
+# Run the setup script
+./scripts/setup.sh
+```
+
+This script will:
+- ✅ Check prerequisites
+- ✅ Install all dependencies
+- ✅ Start PostgreSQL and Redis with Docker
+- ✅ Run database migrations
+- ✅ Seed test data
+
+After setup completes:
+
+```bash
+# Terminal 1: Start backend
+cd src/backend
+npm run dev
+
+# Terminal 2: Start frontend
+cd src/frontend
+npm run dev
+```
 
 ### Quick Start with Docker
 
@@ -126,16 +158,29 @@ cd Ppcsim
 
 # Set up environment variables
 cp .env.example .env
-# Edit .env with your configuration
 
-# Start services with Docker Compose
+# Start Docker services
 docker-compose up -d
 
-# Run database migrations
-npm run migrate
+# Install dependencies
+npm install
 
-# Start the application
-npm run dev
+# Generate Prisma client
+cd src/backend
+npx prisma generate
+
+# Run database migrations
+npx prisma migrate dev
+
+# Seed database (optional)
+npm run seed
+cd ../..
+
+# Start backend (new terminal)
+cd src/backend && npm run dev
+
+# Start frontend (new terminal)
+cd src/frontend && npm run dev
 ```
 
 ### Manual Setup
@@ -149,6 +194,11 @@ createdb ppcsim
 
 # Set up environment variables
 cp .env.example .env
+# Edit .env with your database credentials
+
+# Generate Prisma client
+cd src/backend
+npx prisma generate
 
 # Run database migrations
 npx prisma migrate dev
@@ -156,22 +206,28 @@ npx prisma migrate dev
 # Seed database (optional)
 npm run seed
 
-# Start development server
+# Start backend
+npm run dev
+
+# In another terminal, start frontend
+cd src/frontend
 npm run dev
 ```
 
 ### Access the Application
 
 - **Frontend:** http://localhost:3000
-- **API:** http://localhost:3001/api
-- **API Docs:** http://localhost:3001/api-docs (Swagger UI)
+- **Backend API:** http://localhost:3001/api
+- **Health Check:** http://localhost:3001/health
 
-### Default Credentials (Development Only)
+### Default Test Credentials
 
 ```
 Email: demo@ppcsimulator.com
 Password: Demo123!
 ```
+
+*Note: Authentication is not yet implemented. Use userId=1 for testing.*
 
 ---
 
