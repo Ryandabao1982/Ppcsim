@@ -86,3 +86,36 @@ The API will be available at `http://localhost:3001/api`
 - Prisma ORM
 - PostgreSQL
 - Winston (logging)
+- express-rate-limit (API rate limiting)
+- express-validator (input validation)
+
+## Security & Best Practices
+
+The backend implements several security and best practice measures:
+
+### Authentication & Authorization
+- Mock authentication middleware (placeholder for JWT implementation)
+- Role-based authorization
+- User context attached to all requests
+
+### Rate Limiting
+- General API rate limiting (100 requests per 15 minutes)
+- Write operation rate limiting (50 requests per 15 minutes)
+- Bulk operation rate limiting (10 requests per hour)
+
+### Input Validation
+- Comprehensive input validation using express-validator
+- Parameter sanitization
+- Type checking for all inputs
+- Custom validation rules for business logic
+
+### Error Handling
+- Centralized error handling middleware
+- Custom error classes for different scenarios
+- Consistent error response format
+- Detailed error logging
+
+### Security Headers
+- Helmet.js for security headers
+- CORS configuration
+- Request logging with Morgan + Winston

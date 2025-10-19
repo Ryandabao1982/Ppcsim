@@ -9,8 +9,7 @@ export class CampaignController {
    */
   async createCampaign(req: Request, res: Response, next: NextFunction) {
     try {
-      // TODO: Get userId from authenticated user
-      const userId = req.body.userId || 1; // Temporary until auth is implemented
+      const userId = (req as any).user.id;
 
       const campaign = await campaignService.createCampaign({
         userId,
@@ -39,8 +38,7 @@ export class CampaignController {
    */
   async getCampaigns(req: Request, res: Response, next: NextFunction) {
     try {
-      // TODO: Get userId from authenticated user
-      const userId = parseInt(req.query.userId as string) || 1; // Temporary
+      const userId = (req as any).user.id;
 
       const filters = {
         status: req.query.status as any,
@@ -65,8 +63,7 @@ export class CampaignController {
   async getCampaign(req: Request, res: Response, next: NextFunction) {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Get userId from authenticated user
-      const userId = parseInt(req.query.userId as string) || 1; // Temporary
+      const userId = (req as any).user.id;
 
       if (isNaN(id)) {
         throw new ValidationError('Invalid campaign ID');
@@ -90,8 +87,7 @@ export class CampaignController {
   async updateCampaign(req: Request, res: Response, next: NextFunction) {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Get userId from authenticated user
-      const userId = req.body.userId || 1; // Temporary
+      const userId = (req as any).user.id;
 
       if (isNaN(id)) {
         throw new ValidationError('Invalid campaign ID');
@@ -129,8 +125,7 @@ export class CampaignController {
   async deleteCampaign(req: Request, res: Response, next: NextFunction) {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Get userId from authenticated user
-      const userId = parseInt(req.query.userId as string) || 1; // Temporary
+      const userId = (req as any).user.id;
 
       if (isNaN(id)) {
         throw new ValidationError('Invalid campaign ID');
@@ -151,8 +146,7 @@ export class CampaignController {
   async getCampaignStats(req: Request, res: Response, next: NextFunction) {
     try {
       const id = parseInt(req.params.id);
-      // TODO: Get userId from authenticated user
-      const userId = parseInt(req.query.userId as string) || 1; // Temporary
+      const userId = (req as any).user.id;
 
       if (isNaN(id)) {
         throw new ValidationError('Invalid campaign ID');

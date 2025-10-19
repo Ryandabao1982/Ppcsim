@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import { config } from './config';
 import { logger, httpLogStream } from './utils/logger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { apiLimiter } from './middleware/rateLimiter';
 
 // Import routes
 // import authRoutes from './routes/auth.routes';
@@ -30,6 +31,9 @@ export const createApp = (): Express => {
 
   // HTTP logging
   app.use(morgan('combined', { stream: httpLogStream }));
+
+  // Rate limiting - apply to all API routes
+  app.use('/api', apiLimiter);
 
   // Health check
   app.get('/health', (req, res) => {

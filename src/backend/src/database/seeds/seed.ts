@@ -107,7 +107,7 @@ async function main() {
   console.log('Created ad groups:', [adGroup1.name, adGroup2.name]);
 
   // Create keywords for ad groups
-  const keywords = await Promise.all([
+  const createdKeywords = await Promise.all([
     prisma.keyword.create({
       data: {
         campaignId: campaign1.id,
@@ -176,7 +176,7 @@ async function main() {
     }),
   ]);
 
-  console.log(`Created ${keywords.length} keywords (including 2 negative keywords)`);
+  console.log(`Created ${createdKeywords.length} keywords (including 2 negative keywords)`);
 
   console.log('Database seeding completed successfully!');
 }
