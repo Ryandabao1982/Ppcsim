@@ -170,10 +170,9 @@ export class KeywordService {
   async bulkCreateKeywords(data: BulkKeywordDto): Promise<Keyword[]> {
     const keywords: Keyword[] = [];
 
-    for (const keywordData of data.keywords) {
-      const keyword = await this.createKeyword(keywordData);
-      keywords.push(keyword);
-    }
+    const keywords = await Promise.all(
+      data.keywords.map((keywordData) => this.createKeyword(keywordData))
+    );
 
     return keywords;
   }
