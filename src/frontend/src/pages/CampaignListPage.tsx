@@ -12,6 +12,10 @@ import {
   Alert,
   Button,
   CardActionArea,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { fetchCampaigns } from '../store/slices/campaignSlice';
@@ -29,6 +33,8 @@ function CampaignListPage() {
   const navigate = useNavigate();
   const { campaigns, loading, error } = useSelector((state: RootState) => state.campaigns);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('name');
   const user = useAuth();
 
   useEffect(() => {
@@ -65,6 +71,27 @@ function CampaignListPage() {
     );
   }
 
+  // Filter and sort campaigns
+  const filteredCampaigns = campaigns
+    .filter((campaign) => {
+      if (filterStatus === 'all') return true;
+      return campaign.status === filterStatus;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'spend':
+          return Number(b.totalSpend) - Number(a.totalSpend);
+        case 'budget':
+          return Number(b.dailyBudget) - Number(a.dailyBudget);
+        case 'created':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        default:
+          return 0;
+      }
+    });
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -80,17 +107,46 @@ function CampaignListPage() {
         </Button>
       </Box>
 
-      {campaigns.length === 0 ? (
+      {/* Filters and Sorting */}
+      <Box display="flex" gap={2} mb={3}>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Status</InputLabel>
+          <Select
+            value={filterStatus}
+            label="Status"
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <MenuItem value="all">All Status</MenuItem>
+            <MenuItem value="ACTIVE">Active</MenuItem>
+            <MenuItem value="PAUSED">Paused</MenuItem>
+            <MenuItem value="ARCHIVED">Archived</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Sort By</InputLabel>
+          <Select value={sortBy} label="Sort By" onChange={(e) => setSortBy(e.target.value)}>
+            <MenuItem value="name">Name</MenuItem>
+            <MenuItem value="spend">Total Spend</MenuItem>
+            <MenuItem value="budget">Daily Budget</MenuItem>
+            <MenuItem value="created">Date Created</MenuItem>
+          </Select>
+        </FormControl>
+      </Box>
+
+      {filteredCampaigns.length === 0 ? (
         <Card>
           <CardContent>
             <Typography variant="body1" color="text.secondary" align="center">
-              No campaigns yet. Create your first campaign to get started!
+              {campaigns.length === 0
+                ? 'No campaigns yet. Create your first campaign to get started!'
+                : 'No campaigns match your filters.'}
             </Typography>
           </CardContent>
         </Card>
       ) : (
         <Grid container spacing={3}>
-          {campaigns.map((campaign) => (
+          {filteredCampaigns.map((campaign) => (
             <Grid item xs={12} md={6} lg={4} key={campaign.id}>
               <Card>
                 <CardActionArea onClick={() => navigate(`/campaigns/${campaign.id}`)}>

@@ -23,6 +23,7 @@ import { fetchCampaignAdGroups } from '../store/slices/adGroupSlice';
 import { fetchCampaignKeywords } from '../store/slices/keywordSlice';
 import AdGroupList from '../components/AdGroupList';
 import KeywordList from '../components/KeywordList';
+import CampaignEditDialog from '../components/CampaignEditDialog';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -51,6 +52,7 @@ function CampaignDetailsPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
   const [tabValue, setTabValue] = useState(0);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const { campaigns, loading: campaignsLoading } = useSelector(
     (state: RootState) => state.campaigns
@@ -117,7 +119,7 @@ function CampaignDetailsPage() {
             {campaign.campaignType.replace(/_/g, ' ')} • {campaign.targetingType}
           </Typography>
         </Box>
-        <IconButton>
+        <IconButton onClick={() => setEditDialogOpen(true)}>
           <EditIcon />
         </IconButton>
       </Box>
@@ -211,6 +213,12 @@ function CampaignDetailsPage() {
           <Alert severity="info">Performance metrics coming soon...</Alert>
         </TabPanel>
       </Paper>
+
+      <CampaignEditDialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        campaignId={Number(campaignId)}
+      />
     </Box>
   );
 }
