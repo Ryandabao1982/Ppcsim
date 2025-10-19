@@ -30,8 +30,13 @@ export interface UpdateKeywordData {
   isNegative?: boolean;
 }
 
-export interface BulkKeywordOperation {
-  keywordIds: number[];
-  operation: 'pause' | 'activate' | 'archive' | 'updateBids';
-  newBid?: number;
-}
+export type BulkKeywordOperation =
+  | {
+      keywordIds: number[];
+      operation: 'updateBids';
+      newBid: number;
+    }
+  | {
+      keywordIds: number[];
+      operation: 'pause' | 'activate' | 'archive';
+    };
