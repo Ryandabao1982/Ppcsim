@@ -27,6 +27,7 @@ export interface UpdateKeywordData {
   matchType?: MatchType;
   bid?: number;
   status?: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+  isNegative?: boolean;
 }
 
 export interface BulkKeywordOperation {
