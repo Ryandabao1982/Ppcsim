@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Box,
@@ -9,13 +9,17 @@ import {
   Chip,
   CircularProgress,
   Alert,
+  Button,
 } from '@mui/material';
+import { Add as AddIcon } from '@mui/icons-material';
 import { fetchCampaigns } from '../store/slices/campaignSlice';
 import { RootState, AppDispatch } from '../store';
+import CampaignFormDialog from '../components/CampaignFormDialog';
 
 function CampaignListPage() {
   const dispatch = useDispatch<AppDispatch>();
   const { campaigns, loading, error } = useSelector((state: RootState) => state.campaigns);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   useEffect(() => {
     // TODO: Get actual userId from auth context
@@ -53,9 +57,18 @@ function CampaignListPage() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        My Campaigns
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">
+          My Campaigns
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setCreateDialogOpen(true)}
+        >
+          Create Campaign
+        </Button>
+      </Box>
 
       {campaigns.length === 0 ? (
         <Card>
@@ -128,6 +141,11 @@ function CampaignListPage() {
           ))}
         </Grid>
       )}
+
+      <CampaignFormDialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+      />
     </Box>
   );
 }
