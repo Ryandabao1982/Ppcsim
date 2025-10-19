@@ -16,15 +16,22 @@ import { fetchCampaigns } from '../store/slices/campaignSlice';
 import { RootState, AppDispatch } from '../store';
 import CampaignFormDialog from '../components/CampaignFormDialog';
 
+// Temporary authentication hook to centralize user logic
+function useAuth() {
+  // TODO: Replace with real authentication logic
+  return { id: 1 };
+}
+
 function CampaignListPage() {
   const dispatch = useDispatch<AppDispatch>();
   const { campaigns, loading, error } = useSelector((state: RootState) => state.campaigns);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const user = useAuth();
 
   useEffect(() => {
-    // TODO: Get actual userId from auth context
-    dispatch(fetchCampaigns(1));
-  }, [dispatch]);
+    // Get userId from auth context (temporary implementation)
+    dispatch(fetchCampaigns(user.id));
+  }, [dispatch, user.id]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
