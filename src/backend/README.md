@@ -61,6 +61,23 @@ The API will be available at `http://localhost:3001/api`
 - `DELETE /api/campaigns/:id` - Delete a campaign
 - `GET /api/campaigns/:id/stats` - Get campaign statistics
 
+### Keywords
+- `POST /api/campaigns/:campaignId/keywords` - Create a new keyword
+- `POST /api/campaigns/:campaignId/keywords/bulk` - Bulk create keywords
+- `GET /api/campaigns/:campaignId/keywords` - Get all keywords for a campaign
+- `GET /api/campaigns/:campaignId/keywords/negative` - Get negative keywords
+- `GET /api/campaigns/:campaignId/keywords/:id` - Get a single keyword
+- `PUT /api/campaigns/:campaignId/keywords/:id` - Update a keyword
+- `DELETE /api/campaigns/:campaignId/keywords/:id` - Delete a keyword
+- `GET /api/campaigns/:campaignId/keywords/:id/stats` - Get keyword statistics
+
+### Ad Groups
+- `POST /api/campaigns/:campaignId/adgroups` - Create a new ad group
+- `GET /api/campaigns/:campaignId/adgroups` - Get all ad groups for a campaign
+- `GET /api/campaigns/:campaignId/adgroups/:id` - Get a single ad group
+- `PUT /api/campaigns/:campaignId/adgroups/:id` - Update an ad group
+- `DELETE /api/campaigns/:campaignId/adgroups/:id` - Delete an ad group
+
 ## Tech Stack
 
 - Node.js 18+

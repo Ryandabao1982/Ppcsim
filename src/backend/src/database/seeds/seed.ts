@@ -85,6 +85,99 @@ async function main() {
 
   console.log('Created campaigns:', [campaign1.name, campaign2.name, campaign3.name]);
 
+  // Create ad groups for campaign1
+  const adGroup1 = await prisma.adGroup.create({
+    data: {
+      campaignId: campaign1.id,
+      name: 'Electronics Ad Group',
+      defaultBid: 1.5,
+      status: 'ACTIVE',
+    },
+  });
+
+  const adGroup2 = await prisma.adGroup.create({
+    data: {
+      campaignId: campaign2.id,
+      name: 'Fashion Ad Group',
+      defaultBid: 2.0,
+      status: 'ACTIVE',
+    },
+  });
+
+  console.log('Created ad groups:', [adGroup1.name, adGroup2.name]);
+
+  // Create keywords for ad groups
+  const keywords = await Promise.all([
+    prisma.keyword.create({
+      data: {
+        campaignId: campaign1.id,
+        adGroupId: adGroup1.id,
+        keywordText: 'wireless headphones',
+        matchType: 'PHRASE',
+        bid: 1.75,
+        status: 'ACTIVE',
+        impressions: BigInt(5000),
+        clicks: 150,
+        conversions: 8,
+        spend: 262.50,
+        sales: 480.00,
+      },
+    }),
+    prisma.keyword.create({
+      data: {
+        campaignId: campaign1.id,
+        adGroupId: adGroup1.id,
+        keywordText: 'bluetooth earbuds',
+        matchType: 'EXACT',
+        bid: 2.0,
+        status: 'ACTIVE',
+        impressions: BigInt(3500),
+        clicks: 120,
+        conversions: 10,
+        spend: 240.00,
+        sales: 550.00,
+      },
+    }),
+    prisma.keyword.create({
+      data: {
+        campaignId: campaign2.id,
+        adGroupId: adGroup2.id,
+        keywordText: 'summer dress',
+        matchType: 'BROAD',
+        bid: 1.5,
+        status: 'ACTIVE',
+        impressions: BigInt(8000),
+        clicks: 250,
+        conversions: 20,
+        spend: 375.00,
+        sales: 1200.00,
+      },
+    }),
+    // Negative keywords
+    prisma.keyword.create({
+      data: {
+        campaignId: campaign1.id,
+        keywordText: 'cheap',
+        matchType: 'EXACT',
+        bid: 0,
+        status: 'ACTIVE',
+        isNegative: true,
+      },
+    }),
+    prisma.keyword.create({
+      data: {
+        campaignId: campaign1.id,
+        keywordText: 'free',
+        matchType: 'EXACT',
+        bid: 0,
+        status: 'ACTIVE',
+        isNegative: true,
+      },
+    }),
+  ]);
+
+  console.log(`Created ${keywords.length} keywords (including 2 negative keywords)`);
+
   console.log('Database seeding completed successfully!');
 }
 
