@@ -347,15 +347,18 @@ Ppcsim/
 - [x] Frontend folder structure and configuration
 - [x] Redux store setup
 - [x] Campaign list display (frontend)
+- [x] Campaign creation form
+- [x] Campaign edit functionality
+- [x] Campaign filtering and sorting
 - [x] **Keyword CRUD operations (backend)**
 - [x] **Ad group CRUD operations (backend)**
 - [x] **Match types support (broad, phrase, exact)**
 - [x] **Negative keyword management**
 - [x] **Bulk keyword operations**
+- [x] **Keyword management UI with filtering**
+- [x] **Ad group management UI**
+- [x] **Campaign details page with tabs**
 - [ ] User authentication system
-- [ ] Campaign creation form
-- [ ] Keyword management UI
-- [ ] Ad group management UI
 - [ ] Simulation engine
 - [ ] Performance dashboard
 
