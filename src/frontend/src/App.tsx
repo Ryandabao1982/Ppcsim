@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { Box, Container } from '@mui/material';
 import CampaignListPage from './pages/CampaignListPage';
+import CampaignDetailsPage from './pages/CampaignDetailsPage';
 import HomePage from './pages/HomePage';
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/campaigns" element={<CampaignListPage />} />
+          <Route path="/campaigns/:campaignId" element={<CampaignDetailsPage />} />
         </Routes>
       </Container>
     </Box>

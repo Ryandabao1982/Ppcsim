@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -10,6 +11,7 @@ import {
   CircularProgress,
   Alert,
   Button,
+  CardActionArea,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import { fetchCampaigns } from '../store/slices/campaignSlice';
@@ -24,6 +26,7 @@ function useAuth() {
 
 function CampaignListPage() {
   const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
   const { campaigns, loading, error } = useSelector((state: RootState) => state.campaigns);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const user = useAuth();
@@ -90,59 +93,61 @@ function CampaignListPage() {
           {campaigns.map((campaign) => (
             <Grid item xs={12} md={6} lg={4} key={campaign.id}>
               <Card>
-                <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
-                    <Typography variant="h6" component="div">
-                      {campaign.name}
+                <CardActionArea onClick={() => navigate(`/campaigns/${campaign.id}`)}>
+                  <CardContent>
+                    <Box display="flex" justifyContent="space-between" alignItems="start" mb={2}>
+                      <Typography variant="h6" component="div">
+                        {campaign.name}
+                      </Typography>
+                      <Chip
+                        label={campaign.status}
+                        color={getStatusColor(campaign.status)}
+                        size="small"
+                      />
+                    </Box>
+
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      {campaign.campaignType.replace('_', ' ')}
                     </Typography>
-                    <Chip
-                      label={campaign.status}
-                      color={getStatusColor(campaign.status)}
-                      size="small"
-                    />
-                  </Box>
 
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    {campaign.campaignType.replace('_', ' ')}
-                  </Typography>
-
-                  <Box mt={2}>
-                    <Grid container spacing={1}>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary">
-                          Daily Budget
-                        </Typography>
-                        <Typography variant="body2" fontWeight="bold">
-                          ${Number(campaign.dailyBudget).toFixed(2)}
-                        </Typography>
+                    <Box mt={2}>
+                      <Grid container spacing={1}>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Daily Budget
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            ${Number(campaign.dailyBudget).toFixed(2)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Total Spend
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            ${Number(campaign.totalSpend).toFixed(2)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Clicks
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {campaign.totalClicks}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Conversions
+                          </Typography>
+                          <Typography variant="body2" fontWeight="bold">
+                            {campaign.totalConversions}
+                          </Typography>
+                        </Grid>
                       </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary">
-                          Total Spend
-                        </Typography>
-                        <Typography variant="body2" fontWeight="bold">
-                          ${Number(campaign.totalSpend).toFixed(2)}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary">
-                          Clicks
-                        </Typography>
-                        <Typography variant="body2" fontWeight="bold">
-                          {campaign.totalClicks}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary">
-                          Conversions
-                        </Typography>
-                        <Typography variant="body2" fontWeight="bold">
-                          {campaign.totalConversions}
-                        </Typography>
-                      </Grid>
-                    </Grid>
-                  </Box>
-                </CardContent>
+                    </Box>
+                  </CardContent>
+                </CardActionArea>
               </Card>
             </Grid>
           ))}
