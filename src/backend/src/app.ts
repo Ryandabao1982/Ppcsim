@@ -9,6 +9,8 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 // Import routes
 // import authRoutes from './routes/auth.routes';
 import campaignRoutes from './routes/campaign.routes';
+import keywordRoutes from './routes/keyword.routes';
+import adGroupRoutes from './routes/adGroup.routes';
 
 export const createApp = (): Express => {
   const app = express();
@@ -37,6 +39,10 @@ export const createApp = (): Express => {
   // API routes
   // app.use(`${config.apiPrefix}/auth`, authRoutes);
   app.use(`${config.apiPrefix}/campaigns`, campaignRoutes);
+  
+  // Nested routes for campaigns
+  app.use(`${config.apiPrefix}/campaigns/:campaignId/keywords`, keywordRoutes);
+  app.use(`${config.apiPrefix}/campaigns/:campaignId/adgroups`, adGroupRoutes);
 
   // Error handlers (must be last)
   app.use(notFoundHandler);
